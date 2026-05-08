@@ -3,7 +3,7 @@ import re  # 过滤用的
 from enum import IntEnum
 from itertools import chain
 from typing import cast, overload
-from unicodedata import normalize
+from unicodedata import combining, normalize
 
 
 class Initial(IntEnum):
@@ -138,8 +138,151 @@ class Syllable:
     def __repr__(self):
         return f"<{self.initial.name}·{self.final.name}·{self.tone.name.removeprefix("t")}{"" if self.is_valid() else "(N/E)"}>"
 
+    def __str__(self) -> str:
+
+        # 此函数 IIIA3 / AI生成内容使用
+
+        initial = self.initial
+        final = self.final
+        tone = self.tone
+
+        if initial in (Initial.missing, Initial.unspec, Initial.nul):
+            initial_str = ""
+        elif initial == Initial.R:
+            initial_str = "r"
+        elif initial == Initial.H:
+            initial_str = "h"
+        else:
+            initial_str = initial.name
+
+        if final in (Final.missing, Final.unspec, Final.nul):
+            final_str = ""
+        else:
+            final_map = {
+                Final.ii: "i",
+                Final.ri: "i",
+                Final.iou: "iu",
+                Final.uei: "ui",
+                Final.ien: "in",
+                Final.uen: "un",
+                Final.v: "ü",
+                Final.veh: "üe",
+                Final.van: "üan",
+                Final.ven: "ün",
+                Final.eh: "ê",
+                Final.ieh: "ie",
+            }
+            final_str = final_map.get(final, final.name)
+
+        base_str = ""
+
+        if initial == Initial.y:
+            y_map = {
+                Final.ia: "ya",
+                Final.ieh: "ye",
+                Final.iao: "yao",
+                Final.iou: "you",
+                Final.ian: "yan",
+                Final.ien: "yin",
+                Final.iang: "yang",
+                Final.ing: "ying",
+                Final.iong: "yong",
+                Final.v: "yu",
+                Final.veh: "yue",
+                Final.van: "yuan",
+                Final.ven: "yun",
+            }
+            base_str = y_map.get(final, f"y{final_str}")
+        elif initial == Initial.w:
+            w_map = {
+                Final.ua: "wa",
+                Final.uo: "wo",
+                Final.uai: "wai",
+                Final.uei: "wei",
+                Final.uan: "wan",
+                Final.uen: "wen",
+                Final.uang: "wang",
+                Final.ueng: "weng",
+            }
+            base_str = w_map.get(final, f"w{final_str}")
+        elif initial in (Initial.j, Initial.q, Initial.x):
+            base_str = initial_str + final_str.replace("ü", "u")
+        elif initial == Initial.R:
+            if final == Final.ri:
+                base_str = "ri"
+            else:
+                base_str = initial_str + final_str
+        elif initial == Initial.H:
+            if final in (Final.hm, Final.hng):
+                base_str = final_str
+            else:
+                base_str = initial_str + final_str
+        else:
+            base_str = initial_str + final_str
+
+        if tone in (Tone.missing, Tone.unspec, Tone.nul, Tone.t5):
+            return base_str
+
+        tone_marks = {
+            Tone.t1: {"a": "ā", "e": "ē", "i": "ī", "o": "ō", "u": "ū", "ü": "ǖ", "ê": "ê̄", "m": "m̄", "n": "n̄"},
+            Tone.t2: {"a": "á", "e": "é", "i": "í", "o": "ó", "u": "ú", "ü": "ǘ", "ê": "ế", "m": "ḿ", "n": "ń"},
+            Tone.t3: {"a": "ǎ", "e": "ě", "i": "ǐ", "o": "ǒ", "u": "ǔ", "ü": "ǚ", "ê": "ê̌", "m": "m̌", "n": "ň"},
+            Tone.t4: {"a": "à", "e": "è", "i": "ì", "o": "ò", "u": "ù", "ü": "ǜ", "ê": "ề", "m": "m̀", "n": "ǹ"},
+        }
+
+        marks = tone_marks.get(tone, {})
+
+        target = None
+        for v in ["a", "ê", "e"]:
+            if v in base_str:
+                target = v
+                break
+        if not target:
+            if "o" in base_str:
+                target = "o"
+            else:
+                for v in reversed(base_str):
+                    if v in ["ü", "u", "i"]:
+                        target = v
+                        break
+
+        if not target:
+            if "n" in base_str:
+                target = "n"
+            elif "m" in base_str:
+                target = "m"
+
+        if target and target in marks:
+            return base_str.replace(target, marks[target], 1)
+
+        return base_str
+
     def __bool__(self):
         return bool(self.initial or self.final or self.tone)
+
+    def need_sep(self, prev: Syllable) -> bool:
+
+        # 此函数 IIIA3 / AI生成内容使用
+
+        if self.initial not in (Initial.nul, Initial.missing):
+            return False
+
+        def remove_tone(s: str) -> str:
+            return "".join(c for c in normalize("NFD", s) if combining(c) == 0)
+
+        current_str = remove_tone(str(self))
+        if not current_str:
+            return False
+        first_char = current_str[0]
+        if first_char not in "aoe":
+            return False
+
+        prev_str = remove_tone(str(prev))
+        if not prev_str:
+            return False
+        last_char = prev_str[-1]
+
+        return last_char in "ngiüurm"
 
     def is_valid(self):
         return check_syllable_valid(int(self))
@@ -778,3 +921,14 @@ def parse_single(s: str, force_valid_syllable=False) -> Syllable:
     rets.tone = rets.tone or Tone.nul
 
     return rets
+
+
+def syllables_to_str(sylls: list[Syllable]) -> str:
+    if not sylls:
+        return ""
+    ret = [str(sylls[0])]
+    for i in range(1, len(sylls)):
+        if sylls[i].need_sep(sylls[i - 1]):
+            ret.append("'")
+        ret.append(str(sylls[i]))
+    return "".join(ret)
