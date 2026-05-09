@@ -35,6 +35,7 @@ class Initial(IntEnum):
     y = 0x0019
     z = 0x001A
     zh = 0x001B
+    M = 0x001C  # Mm Mn Mng
 
 
 class Final(IntEnum):
@@ -207,16 +208,12 @@ class Syllable:
             base_str = w_map.get(final, f"w{final_str}")
         elif initial in (Initial.j, Initial.q, Initial.x):
             base_str = initial_str + final_str.replace("ü", "u")
-        elif initial == Initial.R:
-            if final == Final.ri:
-                base_str = "ri"
-            else:
-                base_str = initial_str + final_str
-        elif initial == Initial.H:
-            if final in (Final.hm, Final.hng):
-                base_str = final_str
-            else:
-                base_str = initial_str + final_str
+        elif (initial == Initial.R) and (final == Final.ri):
+            base_str = "ri"
+        elif (initial == Initial.H) and (final in (Final.hm, Final.hng)):
+            base_str = final_str
+        elif (initial == initial.M) and (final in (Final.m, Final.n, Final.ng)):
+            base_str = final_str
         else:
             base_str = initial_str + final_str
 
@@ -260,6 +257,11 @@ class Syllable:
     def __bool__(self):
         return bool(self.initial or self.final or self.tone)
 
+    def __eq__(self, other):
+        return self.initial == other.initial and self.final == other.final and self.tone == other.tone
+
+    __hash__ = __int__
+
     def need_sep(self, prev: Syllable) -> bool:
 
         # 此函数 IIIA3 / AI生成内容使用
@@ -271,18 +273,21 @@ class Syllable:
             return "".join(c for c in normalize("NFD", s) if combining(c) == 0)
 
         current_str = remove_tone(str(self))
-        if not current_str:
-            return False
-        first_char = current_str[0]
-        if first_char not in "aoe":
+        prev_str = remove_tone(str(prev))
+
+        if not (current_str and prev_str):
             return False
 
-        prev_str = remove_tone(str(prev))
-        if not prev_str:
-            return False
+        first_char = current_str[0]
         last_char = prev_str[-1]
 
-        return last_char in "ngiüurm"
+        if first_char in "aoe":
+            return last_char in "ngiüurm" or (last_char == "a" and first_char == "o")
+
+        if first_char == "n":
+            return last_char in "aeiouü"
+
+        return False
 
     def is_valid(self):
         return check_syllable_valid(int(self))
@@ -430,7 +435,7 @@ TOKENS = {
     "üán": [0x2980],
     "üǎn": [0x29A0],
     "üàn": [0x29C0],
-    "hng": [0x0E02],  # 哼
+    "hng": [0x0EE3],  # 哼
     "zhi": [0x1E1B],  # [ʅ]
     "zhī": [0x1E7B],  # 支
     "zhí": [0x1E9B],  # 直
@@ -546,7 +551,7 @@ TOKENS = {
     "rí": [0x1E84, 0x1E80],  # 迟 不存在
     "rǐ": [0x1EA4, 0x1EA0],  # 齿 不存在
     "rì": [0x1EC4, 0x1EC0],  # 斥 日
-    "hm": [0x0D02],
+    "hm": [0x0DE3],
     "ai": [0x0402, 0x0400],
     "āi": [0x0462, 0x0460],  # 该 挨
     "ái": [0x0482, 0x0480],  # 孩 皑
@@ -598,11 +603,11 @@ TOKENS = {
     "iú": [0x1980],  # 求
     "iǔ": [0x19A0],  # 朽
     "iù": [0x19C0],  # 锈
-    "ng": [0x1A02],  # [ŋ̊]，仅见于唔、嗯二字
-    "ńg": [0x1A82],
-    "ňg": [0x1AA2],
-    "ǹg": [0x1AC2],  # n+macron没有单字符表示，且n1g不存在，
-    "n̄g": [0x1A62],  # 然而还是为了不违反直觉，在这插一个n1g
+    "ng": [0x1A1C],  # [ŋ̊]，仅见于唔、嗯二字
+    "n̄g": [0x1A7C],  # 然而还是为了不违反直觉，在这插一个n1g
+    "ńg": [0x1A9C],
+    "ňg": [0x1ABC],
+    "ǹg": [0x1ADC],  # n+macron没有单字符表示，且n1g不存在，
     "ou": [0x1D02, 0x1D00],
     "ōu": [0x1D62, 0x1D60],  # 沟 欧
     "óu": [0x1D82, 0x1D80],  # 楼 吽
@@ -762,10 +767,6 @@ TOKENS = {
     "́": [0x0080],
     "̌": [0x00A0],
     "̀": [0x00C0],
-    "ˉ": [0x0060],  # 非ISO
-    "ˊ": [0x0080],
-    "ˇ": [0x00A0],
-    "ˋ": [0x00C0],
     # 以下按需启用
     # "?": [0x0001, 0x0100, 0x0020],
     # ".": [0x0121],  # 通配
@@ -773,37 +774,39 @@ TOKENS = {
     # "0": [0x0020],  # 声调通配
     # "/": [0x0002],  # 零声母
     # "&": [0x0004],  # 伪声母R
-    "n̄": [0x2D62],  # 多字符，不存在
-    "ń": [0x2D82],
-    "ň": [0x2DA2],
-    "ǹ": [0x2DC2],
-    "n1": [0x2D62],  # 不存在
-    "n2": [0x2D82],
-    "n3": [0x2DA2],
-    "n4": [0x2DC2],
-    "m̄": [0x2C62],  # 多字符，不存在
-    "ḿ": [0x2C82],  # 只有ḿ有单字符表示
-    "m̌": [0x2CA2],  # 多字符，不存在
-    "m̀": [0x2CC2],  # 多字符
-    "m1": [0x2C62],  # 不存在
-    "m2": [0x2C82],
-    "m3": [0x2CA2],  # 不存在
-    "m4": [0x2CC2],
+    "n̄": [0x2D7C],  # 多字符，不存在
+    "ń": [0x2D9C],
+    "ň": [0x2DBC],
+    "ǹ": [0x2DDC],
+    "n1": [0x2D7C],  # 不存在
+    "n2": [0x2D9C],
+    "n3": [0x2DBC],
+    "n4": [0x2DDC],
+    "m̄": [0x2C7C],  # 多字符，不存在
+    "ḿ": [0x2C9C],  # 只有ḿ有单字符表示
+    "m̌": [0x2CBC],  # 多字符，不存在
+    "m̀": [0x2CDC],  # 多字符
+    "m1": [0x2C7C],  # 不存在
+    "m2": [0x2C9C],
+    "m3": [0x2CBC],  # 不存在
+    "m4": [0x2CDC],
 }
 
 VALID_CHARS = set(chain.from_iterable(TOKENS.keys()))
 VALID_CHARS_RE = re.compile(f"[{re.escape("".join(VALID_CHARS))}]*")
 
 VALID_SYLLABLES = base64.a85decode(
-    b'!<<*"zzzzzz!!":^E<tXoEt"kj@gqGeEt%-UEsr$Kzz!!",J5lfstEX_$M6O;c?Et%-sEsr$Kzz!!",I&-V\'tEt$"0CCK:mHOT!(HOKlSzz!!%O:.1##\'HORjX9*"&AHOT!(HOKlSzz!!!!a!!qZQEt%-OCCK:kHOT!&HOKlSzz!!!/`5n&G60F3=`.1Ck\\-j[b-GmjZQzz!!"-,!!"9[63%/*,6T:4!rulK!sel,zz!!%P"!!MAc1(:sY.L;h&3XhhQ.guCXzz!!"-l?i]9VH48`SCB1$j,7NMVHOKlSzz!!!-%z!!!-%!!!-%!!!-%zzz!!!-%zzzzzzz!!!-%zzzzzzz!!!!b"9Tdo7fsm]7fsm]7fsm]7fr_kzz!!!!1!!3-3"Tn`9"9SX$"9SW8"9SW(zz!!",Q"9BVW7frb-7fsm]7fsm]7fr_kzz!!!!a!!3-3"9Tc3"Tna$"TolD"Tn`)zz!!!!15li+U7KWY;7KXd\\7fsm_7fr_kzz!!!#G!!4:j7fsm]70=Z07fsm]7fr_kzz!!"-l!<XH@"p4k@#6Q*q#6Q)G"p4i*zzz&-P5u&-P5u&-P5u&-P5u&-Mt5zz!!!#G"9BWB7KWY+7fsm]7fsm]7fr_kzzz!!!!1"9SW("9SW8!!<34"9SW(zz!!!!1!!3-t"Tna$"TnbO"TnbO"Tn`)zz!!!-%z!!!-%!!!-%!!!-%zzz!!":[!WjWt!WjX!!WXKr!WXKr!WW3#zz!!!!%#R%q[=:Du9=TH6S=Ua5*=UY91zz!!!-e?i\\.6EX]n/CC%lIHORj[HOKlSzz!!%NL+:*Jt+:*Jt+:*Jt+:+&/+:%rIzz!!&ZeaoL@<ndOIFq[DEOq[DEOq[<H)zzzJ,k*NTEkN+L]DrNTEp\'!TE"rlzz!!!!)J,k*&TEp&R!!%NpTEp\'!TEkMtzzz!!\'edn-m*\'aU!E6faPYjq$[6\'zz!!!!-!!%O#TEp&rJ,k*NTEp\'!TEkMtzz!!#7iTEN%^cjYFQp]SAap^Fqip^@-&zz!!!!AJ,mB!cj[]\\aTTCrp^BE)q$[6\'zzzzJ,fQLzJ,fQLJ,fQLzz!!!!n&.H?Kn-hQVGmlr4d0.7%q$[6\'zz!!!!1"9SW8"9SX#"Tna$"Tna$"Tn`)zzz"98E5"9SW("9SW8"9SW8"9SW(zzz!!!!1"9SW8"9SX#!!<3t"Tn`)zzz!!3-3"9SW("9SW8"9JQ7!!<3$zzz!!!-%!!!-%z!!!-%zzzzz!!!-%!!!-%!!!-%zzzz!!!-%!!!-%!!!-%!!!-'
+    b'q>2-6l15_oq>2-6q=>R.a`&4$zzzH&EXE3V!^_H2AQ`H2AQ`84!jfzzzq<K"&Z18e8q>238q>238#Qb,0zzzq>238Z2,(5q>238q>238i(sa^zzzH2AQ`H1DjUH2AWbH2AWb!"],3zzz@64l!@7pq0+U\\VY0j>\\$6$X"DzzzadNb@Ja`pGamf?2RIC1X#S6t9zzz\\Z6,@YbMO,WJ_5gl2(ei+<UXbzzzq7@[M\\FLO<kkPJdq"#O/#Tsrazzzz!<<*"!<<*"!<<*"!<<*"zzzzzzz!WW3#zzzzzzz!WW3#zzz8G(:08G(:08G(:08G(:05S1a3zzz!(=X\'!!L+<5SV$7!!L+<!!IfPzzz8ArmU5k*/$8G(:08G(:0#R!Enzzz!!L+<#Z/>;!*$c7#ZSV?!"aY\\zzz8@6bE!4:,R8G(:0aRmj[!(9W`zzz8G(:089E5Z8CZ#e8G(:0!&T3+zzz#aE.*!:[f)#kYq58<gpj#[kFJzzz&-)h6&-)h6&-)h6&-)h6!!!-&zzz8<hL%!:\\A98G(:08G(:0!&QtAzzz!!L+<!!\'h8!!L(;!!L+<zzzz5ZGQ"!*$c7!-H$W!-H$W!!IfPzzzz!!!!%!!!!%!!!!%zzzz$(ueKM4ahK$(q7u$(q7u$*\\p[zzzE#TPp0N&YdE*F([GZtpc!!*-%zzzn[fbCZ18e7nbX@0EVgdZ!>$(Jzzz+92ZK+92ZK+92ZK,QJ)O+92ZKzzzpmXAJq"m5Wq"m5Wq"m5WW08t:zzz+:BS!!!=DF+:0Ft+:BRt!!",Azzz+9<kl+9DNC+:0Ft+:BS!!!48CzzzE!nc10N\'Y-?s>MkE)Sq&zzzz+:BS!+:94k+:BS!+:BS!!!<3$zzzE!nK)+:::5E!ni3E!ni3&-=6\\zzzE#LP80N\'Y,E#UtC:g6*c!!j\\Izzz!!",Az!!",A!!",AzzzzE"b>9:fAD;:fB1OE*GL.5SF8&zzz!!L+<!*$c7!*$c7!*$c7!!L+<zzz!!L+<!!\'h8!!L+<!!L+<!!!$"zzz!!L+<!!L+<!#33K!*$c7zzzz!!L+<!!\'h8!!IiQ!!L(;!!%NLzzz!!!!%!!!!%z!!!!%zzzzz!!!!%!!!!%!!!!%zzzz!<<*"!<<*"!<<*"!<'
 )
 # 请自行忽略这个雷霆大位图，0人知道为什么我要把位图直接就内联到代码里
+
+CHRMAP = str.maketrans("ˉˊˇˋ", "̄́̌̀")
 
 
 def check_syllable_valid(i: int) -> bool:
     def _check_full(val: int) -> bool:
-        off = val - 592
-        return (0 <= off < 11384) and bool(VALID_SYLLABLES[(off >> 3)] & (1 << (off & 7)))
+        off = val - 866
+        return (0 <= off < 11105) and bool(VALID_SYLLABLES[(off >> 3)] & (1 << (off & 7)))
 
     initial = i & 0x001F
     final = i & 0x3F00
@@ -840,38 +843,79 @@ def check_input_valid(s: str, VRE: re.Pattern[str] | str = VALID_CHARS_RE) -> bo
 
 
 def __parse(s: str, stack: list[Syllable], force_initial: bool = True, force_valid_syllable: bool = False) -> list[Syllable] | None:
+
+    # _pad = " " * ((len(inspect.stack()) - 8) * 4) + "|"
+
+    # print(f"{_pad}in {s=} {stack=} {force_initial=} {force_valid_syllable=}")
     # 我知道DFS还不剪枝会导致这个函数性能极差而且有爆递归风险，但是我无能优化了
     if not s:
         return stack
     valid_heads = [s[:n] for n in range(min(4, len(s)), 0, -1) if s[:n] in TOKENS]
     if not valid_heads:
         return None
-    for default_next_force_initial in [True, False]:
-        for head in valid_heads:
-            prepared_next_force_initial = default_next_force_initial and (
-                not ((head[-1] not in TOKENS) or (not any(((r & 0x001F) and (r & 0x001F) != Initial.nul) for r in TOKENS[head[-1]])))
-            )  # 当前head末位字符不能做声母，那没必要再设置声母回退了
-            for role in (Syllable(v) for v in TOKENS[head]):
-                if stack[-1]._mreject(role, force_initial):
+
+    dont_try_again: set[Syllable] = set()
+
+    # print(f"{_pad}1trial {valid_heads=}")
+
+    for head in valid_heads:
+        next_force_initial = not (
+            (head[-1] not in TOKENS) or (not any(((r & 0x001F) and (r & 0x001F) != Initial.nul) for r in TOKENS[head[-1]]))
+        )  # 当前head末位字符不能做声母，那没必要再设置声母回退了。
+        # 不回退但是也不能直接continue（那样会导致更短的head先被尝试然后抢了），只能扔到dont_try_again里防止冗余计算
+        # 虽然但是很明显这块是把原来的for in [True,False]展开了。嘛虽然更长了但至少缩进少了而且效率或许可能会高一点？
+        # print(f"{_pad}1t {next_force_initial=}")
+
+        for role in (Syllable(v) for v in TOKENS[head]):
+            if stack[-1]._mreject(role, force_initial):
+                continue
+            # print(f"{_pad}1t {role=}")
+
+            current_stack = stack.copy()
+            current_stack[-1] = current_stack[-1].copy()
+            current_stack[-1]._merge(role)
+
+            for start_new_syll in [True] if role.tone else [False, True]:  # 声调后必须新开音节
+                # print(f"{_pad}1t {start_new_syll=}")
+                if force_valid_syllable and start_new_syll and (not current_stack[-1].is_valid()):
                     continue
-                current_stack = stack.copy()
-                current_stack[-1] = current_stack[-1].copy()
-                current_stack[-1]._merge(role)
-                for start_new_syll in [True] if role.tone else [False, True]:  # 声调后必须新开音节
-                    if force_valid_syllable and start_new_syll and (not current_stack[-1].is_valid()):
-                        continue
-                    next_force_initial = prepared_next_force_initial & start_new_syll  # 不新开音节就不检测声母。此处应有剪枝但我没写
-                    next_new_stack = current_stack.copy()
-                    if start_new_syll:
-                        next_new_stack.append(Syllable())
-                    ret_stack = __parse(s[len(head) :], next_new_stack, next_force_initial, force_valid_syllable)
-                    if ret_stack:
-                        return ret_stack
+                if not next_force_initial:
+                    dont_try_again.add(role)
+                next_new_stack = current_stack.copy()
+                if start_new_syll:
+                    next_new_stack.append(Syllable())
+                if ret_stack := __parse(
+                    s[len(head) :], next_new_stack, next_force_initial and start_new_syll, force_valid_syllable
+                ):  # 不新开音节就不检测声母
+                    return ret_stack
+
+    # print(f"{_pad}2trial {dont_try_again=}")
+
+    for head in valid_heads:
+        for role in (Syllable(v) for v in TOKENS[head]):
+            if role in dont_try_again:
+                continue
+
+            if stack[-1]._mreject(role, force_initial):
+                continue
+
+            current_stack = stack.copy()
+            current_stack[-1] = current_stack[-1].copy()
+            current_stack[-1]._merge(role)
+
+            for start_new_syll in [True] if role.tone else [False, True]:
+                if force_valid_syllable and start_new_syll and (not current_stack[-1].is_valid()):
+                    continue
+                next_new_stack = current_stack.copy()
+                if start_new_syll:
+                    next_new_stack.append(Syllable())
+                if ret_stack := __parse(s[len(head) :], next_new_stack, False, force_valid_syllable):
+                    return ret_stack
     return None
 
 
-def parse(s: str, sep: str = "' -_", default_tone_neutral=False, force_valid_syllable=False, missing_as_nul: bool = False) -> list[Syllable]:
-    s = normalize("NFKC", s).lower()
+def parse(s: str, sep: str = "' -", default_tone_neutral=False, force_valid_syllable=False, missing_as_nul: bool = False) -> list[Syllable]:
+    s = normalize("NFKC", s).lower().translate(CHRMAP)
     if not check_input_valid(s, re.compile(f"[{re.escape("".join(VALID_CHARS|set(sep)))}]*")):
         raise ValueError("无效的输入字符")
 
@@ -902,7 +946,7 @@ def parse(s: str, sep: str = "' -_", default_tone_neutral=False, force_valid_syl
 
 
 def parse_single(s: str, force_valid_syllable=False) -> Syllable:
-    s = normalize("NFKC", s).lower()
+    s = normalize("NFKC", s).lower().translate(CHRMAP)
     if not check_input_valid(s):
         raise ValueError("无效的输入字符")
 
@@ -918,7 +962,7 @@ def parse_single(s: str, force_valid_syllable=False) -> Syllable:
 
     rets.initial = rets.initial or Initial.nul
     rets.final = rets.final or Final.nul
-    rets.tone = rets.tone or Tone.nul
+    rets.tone = rets.tone or Tone.t5
 
     return rets
 
