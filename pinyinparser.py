@@ -901,6 +901,8 @@ def _check_input_valid(s: str, VRE: re.Pattern[str] | str = VALID_CHARS_RE_DEFAU
 def __parse(s: str, stack: list[Syllable], force_initial: bool = True, force_valid_syllable: bool = False) -> list[Syllable] | None:
     # 我知道DFS还不剪枝会导致这个函数性能极差而且有爆递归风险，但是我无能优化了
     if not s:
+        if force_valid_syllable and (not stack[-1].is_valid()):
+            return None
         return stack
     valid_heads = [s[:n] for n in range(min(4, len(s)), 0, -1) if s[:n] in TOKENS]
     if not valid_heads:
