@@ -1,11 +1,12 @@
 import base64  # 解压那坨位图用的（嗯确实是解压因为a85编码比直接写hex还短这何尝不是一种压缩
 import re  # 过滤用的
 from collections.abc import Iterable
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from functools import cache
 from itertools import chain, pairwise
 from typing import cast, overload
 from unicodedata import normalize
+from warnings import warn
 
 
 class Initial(IntEnum):
@@ -116,13 +117,19 @@ FINAL2STR = {
     Final.ieh: "ie",
     Final.ieng: "ing",
 }
+TONE2STR = {
+    Tone.t1: "1",
+    Tone.t2: "2",
+    Tone.t3: "3",
+    Tone.t4: "4",
+    Tone.t5: "5",
+}
 FINAL2TONED = {
     Tone.t1: {"a": "ā", "e": "ē", "i": "ī", "o": "ō", "u": "ū", "ü": "ǖ", "ê": "ê̄", "m": "m̄", "n": "n̄"},
     Tone.t2: {"a": "á", "e": "é", "i": "í", "o": "ó", "u": "ú", "ü": "ǘ", "ê": "ế", "m": "ḿ", "n": "ń"},
     Tone.t3: {"a": "ǎ", "e": "ě", "i": "ǐ", "o": "ǒ", "u": "ǔ", "ü": "ǚ", "ê": "ê̌", "m": "m̌", "n": "ň"},
     Tone.t4: {"a": "à", "e": "è", "i": "ì", "o": "ò", "u": "ù", "ü": "ǜ", "ê": "ề", "m": "m̀", "n": "ǹ"},
 }
-
 SYLLMAP_Y = {
     Final.ia: "ya",
     Final.ieh: "ye",
@@ -148,7 +155,6 @@ SYLLMAP_W = {
     Final.uang: "wang",
     Final.ueng: "weng",
 }
-
 SYLL1SEP: set[Final] = {
     Final.m,
     Final.n,
@@ -185,7 +191,25 @@ SYLLSEP: dict[Final, set[Final]] = {
 }
 
 
-class Syllable:
+class ToneStyle(StrEnum):
+    ABOVE = "above"
+    RIGHT = "right"
+    AFTER = "after"
+
+
+class IncompatibleWarning(UserWarning):
+    pass
+
+
+class _SyllMeta(type):
+    def __getattr__(self, name):
+        try:
+            return parse_single(name)
+        except ValueError:
+            raise AttributeError(name)
+
+
+class Syllable(metaclass=_SyllMeta):
     @overload
     def __init__(self, i: Initial = ..., f: Final = ..., t: Tone = ...): ...
 
@@ -226,7 +250,7 @@ class Syllable:
         return f"<{self.initial.name}·{self.final.name}·{self.tone.name.removeprefix("t")}{"" if self.is_valid() else "(N/E)"}>"
 
     @cache
-    def __str__(self) -> str:
+    def to_str(self, tone_style: ToneStyle = ToneStyle.ABOVE, NO_INCOMPAT_WARNING: bool = False) -> str:
         match self.initial:
             case Initial.missing | Initial.unspec | Initial.nul:
                 initial_str = ""
@@ -261,7 +285,13 @@ class Syllable:
         if not base_str:
             return ""
 
-        if self.tone in (Tone.missing, Tone.unspec, Tone.nul, Tone.t5):
+        if tone_style == ToneStyle.AFTER:
+            return base_str + TONE2STR.get(self.tone, "")
+
+        if self.tone in (Tone.missing, Tone.unspec, Tone.nul):
+            return base_str
+
+        if tone_style == ToneStyle.ABOVE and self.tone == Tone.t5:
             return base_str
 
         toned = FINAL2TONED.get(self.tone, {})
@@ -280,10 +310,22 @@ class Syllable:
                 else:
                     return base_str
 
-        if base_str[pos] in toned:
-            return f"{base_str[:pos]}{toned[base_str[pos]]}{base_str[pos+1:]}"
+        if tone_style == ToneStyle.ABOVE:
+            if base_str[pos] in toned:
+                return f"{base_str[:pos]}{toned[base_str[pos]]}{base_str[pos+1:]}"
+            return base_str
+        elif tone_style == ToneStyle.RIGHT:
+            if not NO_INCOMPAT_WARNING:
+                warn(
+                    "注意：使用RIGHT（数字附标）模式产出的拼音字符串并不通用，且不再能被本解析器解析。如果你明确知道你在做什么，可以传入NO_INCOMPAT_WARNING=True以关闭此警告。",
+                    IncompatibleWarning,
+                )
+            return f"{base_str[:pos+1]}{TONE2STR.get(self.tone, '')}{base_str[pos+1:]}"
 
         return base_str
+
+    def __str__(self):
+        return self.to_str()
 
     def __bool__(self):
         return bool(self.initial or self.final or self.tone)
@@ -807,15 +849,12 @@ TOKENS = {
     "m3": [0x2CBC],  # 不存在
     "m4": [0x2CDC],
 }
-
 VALID_CHARS = set(chain.from_iterable(TOKENS.keys()))
-VALID_CHARS_RE = re.compile(f"[{re.escape("".join(VALID_CHARS))}]*")
-
+VALID_CHARS_RE_DEFAULT = re.compile(f"[{re.escape("".join(VALID_CHARS))}]*")
 VALID_SYLLABLES = base64.a85decode(
     b'q>2-6l15_oq>2-6q=>R.a`&4$zzzH&EXE3V!^_H2AQ`H2AQ`84!jfzzzq<K"&Z18e8q>238q>238#Qb,0zzzq>238Z2,(5q>238q>238i(sa^zzzH2AQ`H1DjUH2AWbH2AWb!"],3zzz@64l!@7pq0+U\\VY0j>\\$6$X"DzzzadNb@Ja`pGamf?2RIC1X#S6t9zzz\\Z6,@YbMO,WJ_5gl2(ei+<UXbzzzq7@[M\\FLO<kkPJdq"#O/#Tsrazzzz!<<*"!<<*"!<<*"!<<*"zzzzzzz!WW3#zzzzzzz!WW3#zzz8G(:08G(:08G(:08G(:05S1a3zzz!(=X\'!!L+<5SV$7!!L+<!!IfPzzz8ArmU5k*/$8G(:08G(:0#R!Enzzz!!L+<#Z/>;!*$c7#ZSV?!"aY\\zzz8@6bE!4:,R8G(:0aRmj[!(9W`zzz8G(:089E5Z8CZ#e8G(:0!&T3+zzz#aE.*!:[f)#kYq58<gpj#[kFJzzz&-)h6&-)h6&-)h6&-)h6!!!-&zzz8<hL%!:\\A98G(:08G(:0!&QtAzzz!!L+<!!\'h8!!L(;!!L+<zzzz5ZGQ"!*$c7!-H$W!-H$W!!IfPzzzz!!!!%!!!!%!!!!%zzzz$(ueKM4ahK$(q7u$(q7u$*\\p[zzzE#TPp0N&YdE*F([GZtpc!!*-%zzzn[fbCZ18e7nbX@0EVgdZ!>$(Jzzz+92ZK+92ZK+92ZK,QJ)O+92ZKzzzpmXAJq"m5Wq"m5Wq"m5WW08t:zzz+:BS!!!=DF+:0Ft+:BRt!!",Azzz+9<kl+9DNC+:0Ft+:BS!!!48CzzzE!nc10N\'Y-?s>MkE)Sq&zzzz+:BS!+:94k+:BS!+:BS!!!<3$zzzE!nK)+:::5E!ni3E!ni3&-=6\\zzzE#LP80N\'Y,E#UtC:g6*c!!j\\Izzz!!",Az!!",A!!",AzzzzE"b>9:fAD;:fB1OE*GL.5SF8&zzz!!L+<!*$c7!*$c7!*$c7!!L+<zzz!!L+<!!\'h8!!L+<!!L+<!!!$"zzz!!L+<!!L+<!#33K!*$c7zzzz!!L+<!!\'h8!!IiQ!!L(;!!%NLzzz!!!!%!!!!%z!!!!%zzzzz!!!!%!!!!%!!!!%zzzz!<<*"!<<*"!<<*"!<'
 )
 # 请自行忽略这个雷霆大位图，0人知道为什么我要把位图直接就内联到代码里
-
 CHRMAP = str.maketrans("ˉˊˇˋ", "̄́̌̀")
 
 
@@ -855,7 +894,7 @@ def _check_syllable_valid(i: int) -> bool:
         return _check_full(i)
 
 
-def check_input_valid(s: str, VRE: re.Pattern[str] | str = VALID_CHARS_RE) -> bool:
+def _check_input_valid(s: str, VRE: re.Pattern[str] | str = VALID_CHARS_RE_DEFAULT) -> bool:
     return bool(re.fullmatch(VRE, s))
 
 
@@ -923,9 +962,12 @@ def __parse(s: str, stack: list[Syllable], force_initial: bool = True, force_val
     return None
 
 
+_recompile = cache(re.compile)
+
+
 def parse(s: str, sep: str = "' -", default_tone_neutral=False, force_valid_syllable=False, missing_as_nul: bool = False) -> list[Syllable]:
     s = normalize("NFKC", s).lower().translate(CHRMAP)
-    if not check_input_valid(s, re.compile(f"[{re.escape("".join(VALID_CHARS|set(sep)))}]*")):
+    if not _check_input_valid(s, _recompile(f"[{re.escape("".join(VALID_CHARS|set(sep)))}]*")):
         raise ValueError("无效的输入字符")
 
     ret = [
@@ -957,7 +999,7 @@ def parse(s: str, sep: str = "' -", default_tone_neutral=False, force_valid_syll
 @cache
 def parse_single(s: str, force_valid_syllable=False) -> Syllable:
     s = normalize("NFKC", s).lower().translate(CHRMAP)
-    if not check_input_valid(s):
+    if not _check_input_valid(s):
         raise ValueError("无效的输入字符")
 
     ret = __parse(s=s, stack=[Syllable()], force_initial=False, force_valid_syllable=force_valid_syllable)
@@ -977,12 +1019,15 @@ def parse_single(s: str, force_valid_syllable=False) -> Syllable:
     return rets
 
 
-def syllables_to_str(sylls: Iterable[Syllable]) -> str:
+def syllables_to_str(sylls: Iterable[Syllable], sep: str = "'") -> str:
     ret = []
-    for prev, curr in pairwise(sylls):
+    for prev, curr in pairwise(filter(None, sylls)):
         if not ret:
             ret.append(str(prev))
         if curr.need_sep(prev):
-            ret.append("'")
+            ret.append(sep)
         ret.append(str(curr))
     return "".join(ret)
+
+
+__all__ = ["Initial", "Final", "Tone", "Syllable", "parse_single", "syllables_to_str", "parse"]
