@@ -243,7 +243,7 @@ class Syllable(metaclass=_SyllMeta):
             except ValueError:
                 raise ValueError("无效的uint16。")
 
-    def __int__(self):
+    def __index__(self):
         return self.initial | self.final | self.tone
 
     def __repr__(self):
@@ -333,7 +333,7 @@ class Syllable(metaclass=_SyllMeta):
     def __eq__(self, other):
         return self.initial == other.initial and self.final == other.final and self.tone == other.tone
 
-    __hash__ = __int__
+    __hash__ = __index__
 
     def is_complete(self):
         return bool(self.initial and self.final and self.tone)
@@ -969,7 +969,7 @@ _recompile = cache(re.compile)
 
 def parse(s: str, sep: str = "' -", default_tone_neutral=False, force_valid_syllable=False, missing_as_nul: bool = False) -> list[Syllable]:
     s = normalize("NFKC", s).lower().translate(CHRMAP)
-    if not _check_input_valid(s, _recompile(f"[{re.escape("".join(VALID_CHARS|set(sep)))}]*")):
+    if not _check_input_valid(s, _recompile(f"[{re.escape(''.join(VALID_CHARS|set(sep)))}]*")):
         raise ValueError("无效的输入字符")
 
     ret = [
