@@ -8,37 +8,41 @@ from typing import cast, overload
 from unicodedata import normalize
 from warnings import warn
 
+# 0x8000为声母变体选择位，0x6000为韵母变体选择位。0x0600不完全是介音，还有一些其他变体的借位，但总体上来说和介音差不多
+
 
 class Initial(IntEnum):
     missing = 0
     unspec = 0x0001
     nul = 0x0002
-    H = 0x0003  # Hhm Hhng
-    R = 0x0004  # Rri
-    b = 0x0005
-    c = 0x0006
-    ch = 0x0007
-    d = 0x0008
-    f = 0x0009
-    g = 0x000A
-    h = 0x000B
-    j = 0x000C
-    k = 0x000D
-    l = 0x000E
-    m = 0x000F
-    n = 0x0010
-    p = 0x0011
-    q = 0x0012
-    r = 0x0013
-    s = 0x0014
-    sh = 0x0015
-    t = 0x0016
-    w = 0x0017
-    x = 0x0018
-    y = 0x0019
-    z = 0x001A
-    zh = 0x001B
-    M = 0x001C  # Mm Mn Mng
+    b = 0x0003
+    c = 0x0004
+    d = 0x0005
+    f = 0x0006
+    g = 0x0007
+    h = 0x0008
+    j = 0x0009
+    k = 0x000A
+    l = 0x000B
+    m = 0x000C
+    n = 0x000D
+    p = 0x000E
+    q = 0x000F
+    r = 0x0010
+    s = 0x0011
+    t = 0x0012
+    w = 0x0013
+    x = 0x0014
+    y = 0x0015
+    z = 0x0016
+
+    ch = 0x8004  # 变体选择位的意义在于，可以通过屏蔽变体选择位来实现“首字母”或者“通配”之类的概念，比如ch屏蔽了0x0400就变成c，下同
+    sh = 0x8011
+    zh = 0x8016
+    H = 0x8008  # Hhm Hhng
+    R = 0x8010  # Rri
+    M = 0x800C  # Mm
+    N = 0x800D  # Nn Nng
 
 
 class Final(IntEnum):
@@ -55,40 +59,40 @@ class Final(IntEnum):
     en = 0x0A00
     eng = 0x0B00
     er = 0x0C00
-    hm = 0x0D00
-    hng = 0x0E00
-    i = 0x0F00  # [i] ji qi xi
-    ia = 0x1000
-    ian = 0x1100
-    iang = 0x1200
-    iao = 0x1300
-    ieh = 0x1400
-    ien = 0x1500
-    ii = 0x1600  # [z]/[ɿ] zi ci si
-    ieng = 0x1700
-    iong = 0x1800
-    iou = 0x1900
-    ng = 0x1A00  # [ŋ̊]
-    o = 0x1B00
-    ong = 0x1C00
-    ou = 0x1D00
-    ri = 0x1E00  # [ʅ] zhi chi shi [ʐ]/[ʅ] ri
-    u = 0x1F00
-    ua = 0x2000
-    uai = 0x2100
-    uan = 0x2200
-    uang = 0x2300
-    uei = 0x2400
-    uen = 0x2500
-    ueng = 0x2600
-    uo = 0x2700
-    v = 0x2800
-    van = 0x2900
-    veh = 0x2A00
-    ven = 0x2B00
-    m = 0x2C00
-    n = 0x2D00
-    eh = 0x2E00  # ê
+    i = 0x0D00  # [i] ji qi xi
+    ong = 0x0E00
+    ou = 0x0F00
+    u = 0x1000
+    uo = 0x1100
+    veh = 0x1200
+    o = 0x1400
+    v = 0x1500
+    ieng = 0x1600
+    ng = 0x1700  # [ŋ̊]
+    m = 0x2200
+    n = 0x4200
+    hm = 0x6200  # 此三视为nul的变体
+    hng = 0x3700  # ng的变体
+    eh = 0x2900  # ê，兼容性地视为变体。理论上兼容变体还可以有hng=eng ng=en这两组，但是这两组从音位上就说不通，因此不予采用
+    ii = 0x2D00  # [z]/[ɿ] zi ci si
+    ri = 0x4D00  # [ʅ] zhi chi shi [ʐ]/[ʅ] ri
+    ia = 0x2300
+    ian = 0x2500
+    iang = 0x2600
+    iao = 0x2700
+    ieh = 0x2800
+    ien = 0x2A00
+    iong = 0x2E00
+    iou = 0x2F00
+    ua = 0x4300
+    uai = 0x4400
+    uan = 0x4500
+    uang = 0x4600
+    uei = 0x4900
+    uen = 0x4A00
+    ueng = 0x4B00
+    van = 0x6500
+    ven = 0x6A00
 
 
 class Tone(IntEnum):
@@ -234,11 +238,11 @@ class Syllable(metaclass=_SyllMeta):
         else:
             if (f is not Final.missing) or (t is not Tone.missing):
                 raise ValueError("不能同时使用uint16初始化和声韵调初始化。")
-            if i & ~0x3FFF:
-                raise ValueError("int中存在无效的位。使用整数初始化时仅接受高2位为0的uint16。")
+            if i & ~0xFFFF:
+                raise ValueError("int中存在无效的位。使用整数初始化时仅接受uint16。")
             try:
-                self.initial = Initial(i & 0x001F)
-                self.final = Final(i & 0x3F00)
+                self.initial = Initial(i & 0x801F)
+                self.final = Final(i & 0x7F00)
                 self.tone = Tone(i & 0x00E0)
             except ValueError:
                 raise ValueError("无效的uint16。")
@@ -378,71 +382,71 @@ class Syllable(metaclass=_SyllMeta):
 
 
 TOKENS = {
-    "iang": [0x1200],
-    "iāng": [0x1260],  # 江
-    "iáng": [0x1280],  # 凉
-    "iǎng": [0x12A0],  # 抢
-    "iàng": [0x12C0],  # 呛
-    "iong": [0x1800],
-    "iōng": [0x1860],  # 凶
-    "ióng": [0x1880],  # 穷
-    "iǒng": [0x18A0],  # 涌
-    "iòng": [0x18C0],  # 用
-    "uang": [0x2300],
-    "uāng": [0x2360],  # 光
-    "uáng": [0x2380],  # 狂
-    "uǎng": [0x23A0],  # 广
-    "uàng": [0x23C0],  # 旷
-    "ueng": [0x2600],
-    "uēng": [0x2660],  # 翁
-    "uéng": [0x2680],  # 不存在，然而拒绝解析有违直觉，因而保留，下同
-    "uěng": [0x26A0],  # 塕
-    "uèng": [0x26C0],  # 瓮
-    "juan": [0x290C],
-    "juān": [0x296C],  # 捐
-    "juán": [0x298C],  # 不存在
-    "juǎn": [0x29AC],  # 卷
-    "juàn": [0x29CC],  # 倦
-    "quan": [0x2912],
-    "quān": [0x2972],  # 圈
-    "quán": [0x2992],  # 全
-    "quǎn": [0x29B2],  # 犬
-    "quàn": [0x29D2],  # 劝
-    "xuan": [0x2918],
-    "xuān": [0x2978],  # 宣
-    "xuán": [0x2998],  # 悬
-    "xuǎn": [0x29B8],  # 选
-    "xuàn": [0x29D8],  # 炫
-    "yang": [0x1219],
-    "yāng": [0x1279],  # 央
-    "yáng": [0x1299],  # 阳
-    "yǎng": [0x12B9],  # 养
-    "yàng": [0x12D9],  # 样
-    "ying": [0x1719],
-    "yīng": [0x1779],  # 英
-    "yíng": [0x1799],  # 赢
-    "yǐng": [0x17B9],  # 影
-    "yìng": [0x17D9],  # 映
-    "yong": [0x1819],
-    "yōng": [0x1879],  # 拥
-    "yóng": [0x1899],  # 颙
-    "yǒng": [0x18B9],  # 泳
-    "yòng": [0x18D9],  # 用
-    "wang": [0x2317],
-    "wāng": [0x2377],  # 汪
-    "wáng": [0x2397],  # 王
-    "wǎng": [0x23B7],  # 网
-    "wàng": [0x23D7],  # 忘
-    "weng": [0x2617],
-    "wēng": [0x2677],  # 翁
-    "wéng": [0x2697],  # 不存在
-    "wěng": [0x26B7],  # 塕
-    "wèng": [0x26D7],  # 瓮
-    "yuan": [0x2919],
-    "yuān": [0x2979],  # 冤
-    "yuán": [0x2999],  # 圆
-    "yuǎn": [0x29B9],  # 远
-    "yuàn": [0x29D9],  # 怨
+    "iang": [0x2600],
+    "iāng": [0x2660],  # 江
+    "iáng": [0x2680],  # 凉
+    "iǎng": [0x26A0],  # 抢
+    "iàng": [0x26C0],  # 呛
+    "iong": [0x2E00],
+    "iōng": [0x2E60],  # 凶
+    "ióng": [0x2E80],  # 穷
+    "iǒng": [0x2EA0],  # 涌
+    "iòng": [0x2EC0],  # 用
+    "uang": [0x4600],
+    "uāng": [0x4660],  # 光
+    "uáng": [0x4680],  # 狂
+    "uǎng": [0x46A0],  # 广
+    "uàng": [0x46C0],  # 旷
+    "ueng": [0x4B00],
+    "uēng": [0x4B60],  # 翁
+    "uéng": [0x4B80],  # 不存在，然而拒绝解析有违直觉，因而保留，下同
+    "uěng": [0x4BA0],  # 塕
+    "uèng": [0x4BC0],  # 瓮
+    "juan": [0x6509],
+    "juān": [0x6569],  # 捐
+    "juán": [0x6589],  # 不存在
+    "juǎn": [0x65A9],  # 卷
+    "juàn": [0x65C9],  # 倦
+    "quan": [0x650F],
+    "quān": [0x656F],  # 圈
+    "quán": [0x658F],  # 全
+    "quǎn": [0x65AF],  # 犬
+    "quàn": [0x65CF],  # 劝
+    "xuan": [0x6514],
+    "xuān": [0x6574],  # 宣
+    "xuán": [0x6594],  # 悬
+    "xuǎn": [0x65B4],  # 选
+    "xuàn": [0x65D4],  # 炫
+    "yang": [0x2615],
+    "yāng": [0x2675],  # 央
+    "yáng": [0x2695],  # 阳
+    "yǎng": [0x26B5],  # 养
+    "yàng": [0x26D5],  # 样
+    "ying": [0x1615],
+    "yīng": [0x1675],  # 英
+    "yíng": [0x1695],  # 赢
+    "yǐng": [0x16B5],  # 影
+    "yìng": [0x16D5],  # 映
+    "yong": [0x2E15],
+    "yōng": [0x2E75],  # 拥
+    "yóng": [0x2E95],  # 颙
+    "yǒng": [0x2EB5],  # 泳
+    "yòng": [0x2ED5],  # 用
+    "wang": [0x4613],
+    "wāng": [0x4673],  # 汪
+    "wáng": [0x4693],  # 王
+    "wǎng": [0x46B3],  # 网
+    "wàng": [0x46D3],  # 忘
+    "weng": [0x4B13],
+    "wēng": [0x4B73],  # 翁
+    "wéng": [0x4B93],  # 不存在
+    "wěng": [0x4BB3],  # 塕
+    "wèng": [0x4BD3],  # 瓮
+    "yuan": [0x6515],
+    "yuān": [0x6575],  # 冤
+    "yuán": [0x6595],  # 圆
+    "yuǎn": [0x65B5],  # 远
+    "yuàn": [0x65D5],  # 怨
     "ang": [0x0602, 0x0600],
     "āng": [0x0662, 0x0660],  # 刚 肮
     "áng": [0x0682, 0x0680],  # 扛 昂
@@ -453,163 +457,163 @@ TOKENS = {
     "éng": [0x0B82, 0x0B80],  # 横 不存在
     "ěng": [0x0BA2, 0x0BA0],  # 冷 不存在
     "èng": [0x0BC2, 0x0BC0],  # 赠 不存在
-    "ian": [0x1100],
-    "iān": [0x1160],  # 先
-    "ián": [0x1180],  # 咸
-    "iǎn": [0x11A0],  # 显
-    "iàn": [0x11C0],  # 现
-    "iao": [0x1300],
-    "iāo": [0x1360],  # 交
-    "iáo": [0x1380],  # 嚼
-    "iǎo": [0x13A0],  # 缴
-    "iào": [0x13C0],  # 叫
-    "ing": [0x1700],
-    "īng": [0x1760],  # 星
-    "íng": [0x1780],  # 形
-    "ǐng": [0x17A0],  # 醒
-    "ìng": [0x17C0],  # 幸
-    "ong": [0x1C00],
-    "ōng": [0x1C60],  # 东
-    "óng": [0x1C80],  # 龙
-    "ǒng": [0x1CA0],  # 拢
-    "òng": [0x1CC0],  # 冻
-    "uai": [0x2100],
-    "uāi": [0x2160],  # 乖
-    "uái": [0x2180],  # 淮
-    "uǎi": [0x21A0],  # 拐
-    "uài": [0x21C0],  # 坏
-    "uan": [0x2200],
-    "uān": [0x2260],  # 欢
-    "uán": [0x2280],  # 环
-    "uǎn": [0x22A0],  # 缓
-    "uàn": [0x22C0],  # 换
-    "van": [0x2900],
-    "vān": [0x2960],  # 捐
-    "ván": [0x2980],  # 全
-    "vǎn": [0x29A0],  # 犬
-    "vàn": [0x29C0],  # 倦
-    "üan": [0x2900],
-    "üān": [0x2960],
-    "üán": [0x2980],
-    "üǎn": [0x29A0],
-    "üàn": [0x29C0],
-    "hng": [0x0EE3],  # 哼
-    "zhi": [0x1E1B],  # [ʅ]
-    "zhī": [0x1E7B],  # 支
-    "zhí": [0x1E9B],  # 直
-    "zhǐ": [0x1EBB],  # 纸
-    "zhì": [0x1EDB],  # 至
-    "chi": [0x1E07],  # [ʅ]
-    "chī": [0x1E67],  # 吃
-    "chí": [0x1E87],  # 持
-    "chǐ": [0x1EA7],  # 尺
-    "chì": [0x1EC7],  # 赤
-    "shi": [0x1E15],  # [ʅ]
-    "shī": [0x1E75],  # 诗
-    "shí": [0x1E95],  # 石
-    "shǐ": [0x1EB5],  # 史
-    "shì": [0x1ED5],  # 事
-    "jue": [0x2A0C],
-    "juē": [0x2A6C],  # 撅
-    "jué": [0x2A8C],  # 绝
-    "juě": [0x2AAC],  # 蹶
-    "juè": [0x2ACC],  # 倔
-    "que": [0x2A12],
-    "quē": [0x2A72],  # 缺
-    "qué": [0x2A92],  # 瘸
-    "quě": [0x2AB2],  # 不存在
-    "què": [0x2AD2],  # 雀
-    "xue": [0x2A18],
-    "xuē": [0x2A78],  # 薛
-    "xué": [0x2A98],  # 学
-    "xuě": [0x2AB8],  # 雪
-    "xuè": [0x2AD8],  # 谑
-    "jun": [0x2B0C],
-    "jūn": [0x2B6C],  # 君
-    "jún": [0x2B8C],  # 不存在
-    "jǔn": [0x2BAC],  # 𢉦（RD广军）
-    "jùn": [0x2BCC],  # 郡
-    "qun": [0x2B12],
-    "qūn": [0x2B72],  # 逡
-    "qún": [0x2B92],  # 群
-    "qǔn": [0x2BB2],  # 䊎
-    "qùn": [0x2BD2],  # 不存在
-    "xun": [0x2B18],
-    "xūn": [0x2B78],  # 勋
-    "xún": [0x2B98],  # 寻
-    "xǔn": [0x2BB8],  # 不存在
-    "xùn": [0x2BD8],  # 巽
-    "yao": [0x1319],
-    "yāo": [0x1379],  # 邀
-    "yáo": [0x1399],  # 摇
-    "yǎo": [0x13B9],  # 咬
-    "yào": [0x13D9],  # 药
-    "you": [0x1919],
-    "yōu": [0x1979],  # 优
-    "yóu": [0x1999],  # 游
-    "yǒu": [0x19B9],  # 有
-    "yòu": [0x19D9],  # 右
-    "yan": [0x1119],
-    "yān": [0x1179],  # 烟
-    "yán": [0x1199],  # 盐
-    "yǎn": [0x11B9],  # 眼
-    "yàn": [0x11D9],  # 验
-    "yin": [0x1519],
-    "yīn": [0x1579],  # 阴
-    "yín": [0x1599],  # 银
-    "yǐn": [0x15B9],  # 饮
-    "yìn": [0x15D9],  # 印
-    "wai": [0x2117],
-    "wāi": [0x2177],  # 歪
-    "wái": [0x2197],  # 不存在
-    "wǎi": [0x21B7],  # 𨂿
-    "wài": [0x21D7],  # 外
-    "wei": [0x2417],
-    "wēi": [0x2477],  # 威
-    "wéi": [0x2497],  # 维
-    "wěi": [0x24B7],  # 尾
-    "wèi": [0x24D7],  # 味
-    "wan": [0x2217],
-    "wān": [0x2277],  # 弯
-    "wán": [0x2297],  # 完
-    "wǎn": [0x22B7],  # 碗
-    "wàn": [0x22D7],  # 万
-    "wen": [0x2517],
-    "wēn": [0x2577],  # 温
-    "wén": [0x2597],  # 文
-    "wěn": [0x25B7],  # 稳
-    "wèn": [0x25D7],  # 问
-    "yue": [0x2A19],
-    "yuē": [0x2A79],  # 约
-    "yué": [0x2A99],  # 块（音yué义不详，但字统有记载因而算进来了）
-    "yuě": [0x2AB9],  # 哕
-    "yuè": [0x2AD9],  # 月
-    "yun": [0x2B19],
-    "yūn": [0x2B79],  # 晕
-    "yún": [0x2B99],  # 云
-    "yǔn": [0x2BB9],  # 允
-    "yùn": [0x2BD9],  # 韵
-    "zi": [0x161A],
-    "zī": [0x167A],  # 兹
-    "zí": [0x169A],  # 不存在
-    "zǐ": [0x16BA],  # 紫
-    "zì": [0x16DA],  # 字
-    "ci": [0x1606],
-    "cī": [0x1666],  # 呲
-    "cí": [0x1686],  # 词
-    "cǐ": [0x16A6],  # 此
-    "cì": [0x16C6],  # 次
-    "si": [0x1614],
-    "sī": [0x1674],  # 丝
-    "sí": [0x1694],  # 不存在
-    "sǐ": [0x16B4],  # 死
-    "sì": [0x16D4],  # 四
-    "ri": [0x1E04, 0x1E00],  # [ʐ]/[ʅ]
-    "rī": [0x1E64, 0x1E60],  # 痴 不存在
-    "rí": [0x1E84, 0x1E80],  # 迟 不存在
-    "rǐ": [0x1EA4, 0x1EA0],  # 齿 不存在
-    "rì": [0x1EC4, 0x1EC0],  # 斥 日
-    "hm": [0x0DE3],
+    "ian": [0x2500],
+    "iān": [0x2560],  # 先
+    "ián": [0x2580],  # 咸
+    "iǎn": [0x25A0],  # 显
+    "iàn": [0x25C0],  # 现
+    "iao": [0x2700],
+    "iāo": [0x2760],  # 交
+    "iáo": [0x2780],  # 嚼
+    "iǎo": [0x27A0],  # 缴
+    "iào": [0x27C0],  # 叫
+    "ing": [0x1600],
+    "īng": [0x1660],  # 星
+    "íng": [0x1680],  # 形
+    "ǐng": [0x16A0],  # 醒
+    "ìng": [0x16C0],  # 幸
+    "ong": [0x0E00],
+    "ōng": [0x0E60],  # 东
+    "óng": [0x0E80],  # 龙
+    "ǒng": [0x0EA0],  # 拢
+    "òng": [0x0EC0],  # 冻
+    "uai": [0x4400],
+    "uāi": [0x4460],  # 乖
+    "uái": [0x4480],  # 淮
+    "uǎi": [0x44A0],  # 拐
+    "uài": [0x44C0],  # 坏
+    "uan": [0x4500],
+    "uān": [0x4560],  # 欢
+    "uán": [0x4580],  # 环
+    "uǎn": [0x45A0],  # 缓
+    "uàn": [0x45C0],  # 换
+    "van": [0x6500],
+    "vān": [0x6560],  # 捐
+    "ván": [0x6580],  # 全
+    "vǎn": [0x65A0],  # 犬
+    "vàn": [0x65C0],  # 倦
+    "üan": [0x6500],
+    "üān": [0x6560],
+    "üán": [0x6580],
+    "üǎn": [0x65A0],
+    "üàn": [0x65C0],
+    "hng": [0xB7E8],  # 哼
+    "zhi": [0xCD16],  # [ʅ]
+    "zhī": [0xCD76],  # 支
+    "zhí": [0xCD96],  # 直
+    "zhǐ": [0xCDB6],  # 纸
+    "zhì": [0xCDD6],  # 至
+    "chi": [0xCD04],  # [ʅ]
+    "chī": [0xCD64],  # 吃
+    "chí": [0xCD84],  # 持
+    "chǐ": [0xCDA4],  # 尺
+    "chì": [0xCDC4],  # 赤
+    "shi": [0xCD11],  # [ʅ]
+    "shī": [0xCD71],  # 诗
+    "shí": [0xCD91],  # 石
+    "shǐ": [0xCDB1],  # 史
+    "shì": [0xCDD1],  # 事
+    "jue": [0x1209],
+    "juē": [0x1269],  # 撅
+    "jué": [0x1289],  # 绝
+    "juě": [0x12A9],  # 蹶
+    "juè": [0x12C9],  # 倔
+    "que": [0x120F],
+    "quē": [0x126F],  # 缺
+    "qué": [0x128F],  # 瘸
+    "quě": [0x12AF],  # 不存在
+    "què": [0x12CF],  # 雀
+    "xue": [0x1214],
+    "xuē": [0x1274],  # 薛
+    "xué": [0x1294],  # 学
+    "xuě": [0x12B4],  # 雪
+    "xuè": [0x12D4],  # 谑
+    "jun": [0x6A09],
+    "jūn": [0x6A69],  # 君
+    "jún": [0x6A89],  # 不存在
+    "jǔn": [0x6AA9],  # 𢉦（RD广军）
+    "jùn": [0x6AC9],  # 郡
+    "qun": [0x6A0F],
+    "qūn": [0x6A6F],  # 逡
+    "qún": [0x6A8F],  # 群
+    "qǔn": [0x6AAF],  # 䊎
+    "qùn": [0x6ACF],  # 不存在
+    "xun": [0x6A14],
+    "xūn": [0x6A74],  # 勋
+    "xún": [0x6A94],  # 寻
+    "xǔn": [0x6AB4],  # 不存在
+    "xùn": [0x6AD4],  # 巽
+    "yao": [0x2715],
+    "yāo": [0x2775],  # 邀
+    "yáo": [0x2795],  # 摇
+    "yǎo": [0x27B5],  # 咬
+    "yào": [0x27D5],  # 药
+    "you": [0x2F15],
+    "yōu": [0x2F75],  # 优
+    "yóu": [0x2F95],  # 游
+    "yǒu": [0x2FB5],  # 有
+    "yòu": [0x2FD5],  # 右
+    "yan": [0x2515],
+    "yān": [0x2575],  # 烟
+    "yán": [0x2595],  # 盐
+    "yǎn": [0x25B5],  # 眼
+    "yàn": [0x25D5],  # 验
+    "yin": [0x2A15],
+    "yīn": [0x2A75],  # 阴
+    "yín": [0x2A95],  # 银
+    "yǐn": [0x2AB5],  # 饮
+    "yìn": [0x2AD5],  # 印
+    "wai": [0x4413],
+    "wāi": [0x4473],  # 歪
+    "wái": [0x4493],  # 不存在
+    "wǎi": [0x44B3],  # 𨂿
+    "wài": [0x44D3],  # 外
+    "wei": [0x4913],
+    "wēi": [0x4973],  # 威
+    "wéi": [0x4993],  # 维
+    "wěi": [0x49B3],  # 尾
+    "wèi": [0x49D3],  # 味
+    "wan": [0x4513],
+    "wān": [0x4573],  # 弯
+    "wán": [0x4593],  # 完
+    "wǎn": [0x45B3],  # 碗
+    "wàn": [0x45D3],  # 万
+    "wen": [0x4A13],
+    "wēn": [0x4A73],  # 温
+    "wén": [0x4A93],  # 文
+    "wěn": [0x4AB3],  # 稳
+    "wèn": [0x4AD3],  # 问
+    "yue": [0x1215],
+    "yuē": [0x1275],  # 约
+    "yué": [0x1295],  # 块（音yué义不详，但字统有记载因而算进来了）
+    "yuě": [0x12B5],  # 哕
+    "yuè": [0x12D5],  # 月
+    "yun": [0x6A15],
+    "yūn": [0x6A75],  # 晕
+    "yún": [0x6A95],  # 云
+    "yǔn": [0x6AB5],  # 允
+    "yùn": [0x6AD5],  # 韵
+    "zi": [0x2D16],
+    "zī": [0x2D76],  # 兹
+    "zí": [0x2D96],  # 不存在
+    "zǐ": [0x2DB6],  # 紫
+    "zì": [0x2DD6],  # 字
+    "ci": [0x2D04],
+    "cī": [0x2D64],  # 呲
+    "cí": [0x2D84],  # 词
+    "cǐ": [0x2DA4],  # 此
+    "cì": [0x2DC4],  # 次
+    "si": [0x2D11],
+    "sī": [0x2D71],  # 丝
+    "sí": [0x2D91],  # 不存在
+    "sǐ": [0x2DB1],  # 死
+    "sì": [0x2DD1],  # 四
+    "ri": [0xCD10, 0x4D00],  # [ʐ]/[ʅ]
+    "rī": [0xCD70, 0x4D60],  # 痴 不存在
+    "rí": [0xCD90, 0x4D80],  # 迟 不存在
+    "rǐ": [0xCDB0, 0x4DA0],  # 齿 不存在
+    "rì": [0xCDD0, 0x4DC0],  # 斥 日
+    "hm": [0xE2E8],
     "ai": [0x0402, 0x0400],
     "āi": [0x0462, 0x0460],  # 该 挨
     "ái": [0x0482, 0x0480],  # 孩 皑
@@ -640,131 +644,131 @@ TOKENS = {
     "ér": [0x0C82, 0x0C80],  # 不存在 儿
     "ěr": [0x0CA2, 0x0CA0],  # 不存在 尔
     "èr": [0x0CC2, 0x0CC0],  # 不存在 佴
-    "ia": [0x1000],
-    "iā": [0x1060],  # 家
-    "iá": [0x1080],  # 夹
-    "iǎ": [0x10A0],  # 贾
-    "ià": [0x10C0],  # 架
-    "ie": [0x1400],
-    "iē": [0x1460],  # 街
-    "ié": [0x1480],  # 截
-    "iě": [0x14A0],  # 解
-    "iè": [0x14C0],  # 借
-    "ii": [0x1600],  # [z]/[ɿ]
-    "in": [0x1500],
-    "īn": [0x1560],  # 侵
-    "ín": [0x1580],  # 琴
-    "ǐn": [0x15A0],  # 寝
-    "ìn": [0x15C0],  # 沁
-    "iu": [0x1900],
-    "iū": [0x1960],  # 秋
-    "iú": [0x1980],  # 求
-    "iǔ": [0x19A0],  # 朽
-    "iù": [0x19C0],  # 锈
-    "ng": [0x1A1C],  # [ŋ̊]，仅见于唔、嗯二字
-    "n̄g": [0x1A7C],  # 然而还是为了不违反直觉，在这插一个n1g
-    "ńg": [0x1A9C],
-    "ňg": [0x1ABC],
-    "ǹg": [0x1ADC],  # n+macron没有单字符表示，且n1g不存在，
-    "ou": [0x1D02, 0x1D00],
-    "ōu": [0x1D62, 0x1D60],  # 沟 欧
-    "óu": [0x1D82, 0x1D80],  # 楼 吽
-    "ǒu": [0x1DA2, 0x1DA0],  # 篓 偶
-    "òu": [0x1DC2, 0x1DC0],  # 够 沤
-    "ua": [0x2000],
-    "uā": [0x2060],  # 花
-    "uá": [0x2080],  # 滑
-    "uǎ": [0x20A0],  # 垮
-    "uà": [0x20C0],  # 跨
-    "ui": [0x2400],
-    "uī": [0x2460],  # 灰
-    "uí": [0x2480],  # 回
-    "uǐ": [0x24A0],  # 毁
-    "uì": [0x24C0],  # 会
-    "un": [0x2500],
-    "ūn": [0x2560],  # 昆
-    "ún": [0x2580],  # 仑
-    "ǔn": [0x25A0],  # 捆
-    "ùn": [0x25C0],  # 论
-    "uo": [0x2700],
-    "uō": [0x2760],  # 锅
-    "uó": [0x2780],  # 活
-    "uǒ": [0x27A0],  # 火
-    "uò": [0x27C0],  # 过
-    "ve": [0x2A00],
-    "vē": [0x2A60],  # 薛
-    "vé": [0x2A80],  # 学
-    "vě": [0x2AA0],  # 雪
-    "vè": [0x2AC0],  # 谑
-    "üe": [0x2A00],
-    "üē": [0x2A60],
-    "üé": [0x2A80],
-    "üě": [0x2AA0],
-    "üè": [0x2AC0],
-    "vn": [0x2B00],
-    "ün": [0x2B00],
-    "ǖn": [0x2B60],  # 逡
-    "ǘn": [0x2B80],  # 群
-    "ǚn": [0x2BA0],  # 允
-    "ǜn": [0x2BC0],  # 孕
-    "ju": [0x280C],
-    "jū": [0x286C],  # 居
-    "jú": [0x288C],  # 局
-    "jǔ": [0x28AC],  # 举
-    "jù": [0x28CC],  # 句
-    "qu": [0x2812],
-    "qū": [0x2872],  # 区
-    "qú": [0x2892],  # 渠
-    "qǔ": [0x28B2],  # 取
-    "qù": [0x28D2],  # 去
-    "xu": [0x2818],
-    "xū": [0x2878],  # 需
-    "xú": [0x2898],  # 徐
-    "xǔ": [0x28B8],  # 许
-    "xù": [0x28D8],  # 序
-    "yi": [0x0F19],
-    "yī": [0x0F79],  # 一
-    "yí": [0x0F99],  # 疑
-    "yǐ": [0x0FB9],  # 以
-    "yì": [0x0FD9],  # 忆
-    "ya": [0x1019],
-    "yā": [0x1079],  # 压
-    "yá": [0x1099],  # 牙
-    "yǎ": [0x10B9],  # 雅
-    "yà": [0x10D9],  # 亚
-    "ye": [0x1419],
-    "yē": [0x1479],  # 噎
-    "yé": [0x1499],  # 爷
-    "yě": [0x14B9],  # 野
-    "yè": [0x14D9],  # 页
-    "wu": [0x1F17],
-    "wū": [0x1F77],  # 屋
-    "wú": [0x1F97],  # 无
-    "wǔ": [0x1FB7],  # 舞
-    "wù": [0x1FD7],  # 物
-    "wa": [0x2017],
-    "wā": [0x2077],  # 洼
-    "wá": [0x2097],  # 娃
-    "wǎ": [0x20B7],  # 瓦
-    "wà": [0x20D7],  # 袜
-    "wo": [0x2717],
-    "wō": [0x2777],  # 窝
-    "wó": [0x2797],  # 不存在
-    "wǒ": [0x27B7],  # 我
-    "wò": [0x27D7],  # 卧
-    "yu": [0x2819],
-    "yū": [0x2879],  # 淤
-    "yú": [0x2899],  # 于
-    "yǔ": [0x28B9],  # 与
-    "yù": [0x28D9],  # 玉
-    "zh": [0x001B],
-    "ch": [0x0007],
-    "sh": [0x0015],
-    "ê": [0x2E00],
-    "ê̄": [0x2E60],
-    "ế": [0x2E80],
-    "ê̌": [0x2EA0],
-    "ề": [0x2EC0],  # U+1EC1 一、二、三声没有结合形式，只能用组合字符；四声有结合形式
+    "ia": [0x2300],
+    "iā": [0x2360],  # 家
+    "iá": [0x2380],  # 夹
+    "iǎ": [0x23A0],  # 贾
+    "ià": [0x23C0],  # 架
+    "ie": [0x2800],
+    "iē": [0x2860],  # 街
+    "ié": [0x2880],  # 截
+    "iě": [0x28A0],  # 解
+    "iè": [0x28C0],  # 借
+    "ii": [0x2D00],  # [z]/[ɿ]
+    "in": [0x2A00],
+    "īn": [0x2A60],  # 侵
+    "ín": [0x2A80],  # 琴
+    "ǐn": [0x2AA0],  # 寝
+    "ìn": [0x2AC0],  # 沁
+    "iu": [0x2F00],
+    "iū": [0x2F60],  # 秋
+    "iú": [0x2F80],  # 求
+    "iǔ": [0x2FA0],  # 朽
+    "iù": [0x2FC0],  # 锈
+    "ng": [0x970D],  # [ŋ̊]，仅见于唔、嗯二字
+    "n̄g": [0xD70D],  # 然而还是为了不违反直觉，在这插一个n1g
+    "ńg": [0xD90D],
+    "ňg": [0xDB0D],
+    "ǹg": [0xDD0D],  # n+macron没有单字符表示，且n1g不存在，
+    "ou": [0x0F02, 0x0F00],
+    "ōu": [0x0F62, 0x0F60],  # 沟 欧
+    "óu": [0x0F82, 0x0F80],  # 楼 吽
+    "ǒu": [0x0FA2, 0x0FA0],  # 篓 偶
+    "òu": [0x0FC2, 0x0FC0],  # 够 沤
+    "ua": [0x4300],
+    "uā": [0x4360],  # 花
+    "uá": [0x4380],  # 滑
+    "uǎ": [0x43A0],  # 垮
+    "uà": [0x43C0],  # 跨
+    "ui": [0x4900],
+    "uī": [0x4960],  # 灰
+    "uí": [0x4980],  # 回
+    "uǐ": [0x49A0],  # 毁
+    "uì": [0x49C0],  # 会
+    "un": [0x4A00],
+    "ūn": [0x4A60],  # 昆
+    "ún": [0x4A80],  # 仑
+    "ǔn": [0x4AA0],  # 捆
+    "ùn": [0x4AC0],  # 论
+    "uo": [0x1100],
+    "uō": [0x1160],  # 锅
+    "uó": [0x1180],  # 活
+    "uǒ": [0x11A0],  # 火
+    "uò": [0x11C0],  # 过
+    "ve": [0x1200],
+    "vē": [0x1260],  # 薛
+    "vé": [0x1280],  # 学
+    "vě": [0x12A0],  # 雪
+    "vè": [0x12C0],  # 谑
+    "üe": [0x1200],
+    "üē": [0x1260],
+    "üé": [0x1280],
+    "üě": [0x12A0],
+    "üè": [0x12C0],
+    "vn": [0x6A00],
+    "ün": [0x6A00],
+    "ǖn": [0x6A60],  # 逡
+    "ǘn": [0x6A80],  # 群
+    "ǚn": [0x6AA0],  # 允
+    "ǜn": [0x6AC0],  # 孕
+    "ju": [0x1509],
+    "jū": [0x1569],  # 居
+    "jú": [0x1589],  # 局
+    "jǔ": [0x15A9],  # 举
+    "jù": [0x15C9],  # 句
+    "qu": [0x150F],
+    "qū": [0x156F],  # 区
+    "qú": [0x158F],  # 渠
+    "qǔ": [0x15AF],  # 取
+    "qù": [0x15CF],  # 去
+    "xu": [0x1514],
+    "xū": [0x1574],  # 需
+    "xú": [0x1594],  # 徐
+    "xǔ": [0x15B4],  # 许
+    "xù": [0x15D4],  # 序
+    "yi": [0x0D15],
+    "yī": [0x0D75],  # 一
+    "yí": [0x0D95],  # 疑
+    "yǐ": [0x0DB5],  # 以
+    "yì": [0x0DD5],  # 忆
+    "ya": [0x2315],
+    "yā": [0x2375],  # 压
+    "yá": [0x2395],  # 牙
+    "yǎ": [0x23B5],  # 雅
+    "yà": [0x23D5],  # 亚
+    "ye": [0x2815],
+    "yē": [0x2875],  # 噎
+    "yé": [0x2895],  # 爷
+    "yě": [0x28B5],  # 野
+    "yè": [0x28D5],  # 页
+    "wu": [0x1013],
+    "wū": [0x1073],  # 屋
+    "wú": [0x1093],  # 无
+    "wǔ": [0x10B3],  # 舞
+    "wù": [0x10D3],  # 物
+    "wa": [0x4313],
+    "wā": [0x4373],  # 洼
+    "wá": [0x4393],  # 娃
+    "wǎ": [0x43B3],  # 瓦
+    "wà": [0x43D3],  # 袜
+    "wo": [0x1113],
+    "wō": [0x1173],  # 窝
+    "wó": [0x1193],  # 不存在
+    "wǒ": [0x11B3],  # 我
+    "wò": [0x11D3],  # 卧
+    "yu": [0x1515],
+    "yū": [0x1575],  # 淤
+    "yú": [0x1595],  # 于
+    "yǔ": [0x15B5],  # 与
+    "yù": [0x15D5],  # 玉
+    "zh": [0x8016],
+    "ch": [0x8004],
+    "sh": [0x8011],
+    "ê": [0x2900],
+    "ê̄": [0x2960],
+    "ế": [0x2980],
+    "ê̌": [0x29A0],
+    "ề": [0x29C0],  # U+1EC1 一、二、三声没有结合形式，只能用组合字符；四声有结合形式
     "a": [0x0302, 0x0300],
     "ā": [0x0362, 0x0360],  # 妈 啊
     "á": [0x0382, 0x0380],  # 麻 啊
@@ -775,47 +779,47 @@ TOKENS = {
     "é": [0x0882, 0x0880],  # 隔 俄
     "ě": [0x08A2, 0x08A0],  # 舸 𫫇
     "è": [0x08C2, 0x08C0],  # 各 恶
-    "i": [0x0F00],  # [i]
-    "ī": [0x0F60],  # 机
-    "í": [0x0F80],  # 急
-    "ǐ": [0x0FA0],  # 挤
-    "ì": [0x0FC0],  # 记
-    "o": [0x1B02, 0x1B00],  # 咯、哦
-    "ō": [0x1B62, 0x1B60],  # 此四音是否统合到uo尚有待商榷，暂定为不统合
-    "ó": [0x1B82, 0x1B80],
-    "ǒ": [0x1BA2, 0x1BA0],
-    "ò": [0x1BC2, 0x1BC0],
-    "u": [0x1F00],
-    "ū": [0x1F60],  # 孤
-    "ú": [0x1F80],  # 湖
-    "ǔ": [0x1FA0],  # 虎
-    "ù": [0x1FC0],  # 固
-    "v": [0x2800],
-    "ü": [0x2800],
-    "ǖ": [0x2860],  # 屈
-    "ǘ": [0x2880],  # 渠
-    "ǚ": [0x28A0],  # 取
-    "ǜ": [0x28C0],  # 去
-    "b": [0x0005],
-    "p": [0x0011],
-    "m": [0x000F],  # 也可为韵母m[m̥]，仅见于呒、呣二字
-    "f": [0x0009],
-    "d": [0x0008],
-    "t": [0x0016],
-    "n": [0x0010],  # 也可为韵母n[n̥]/[ɰ̃]，仅见于唔、嗯二字
-    "l": [0x000E],
-    "g": [0x000A],
-    "h": [0x000B],
-    "j": [0x000C],
-    "k": [0x000D],
-    "q": [0x0012],
-    "x": [0x0018],
-    "r": [0x0013],
-    "z": [0x001A],
-    "c": [0x0006],
-    "s": [0x0014],
-    "y": [0x0019],  # 伪声母y
-    "w": [0x0017],  # 伪声母w
+    "i": [0x0D00],  # [i]
+    "ī": [0x0D60],  # 机
+    "í": [0x0D80],  # 急
+    "ǐ": [0x0DA0],  # 挤
+    "ì": [0x0DC0],  # 记
+    "o": [0x1402, 0x1400],  # 咯、哦
+    "ō": [0x1462, 0x1460],  # 此四音是否统合到uo尚有待商榷，暂定为不统合
+    "ó": [0x1482, 0x1480],
+    "ǒ": [0x14A2, 0x14A0],
+    "ò": [0x14C2, 0x14C0],
+    "u": [0x1000],
+    "ū": [0x1060],  # 孤
+    "ú": [0x1080],  # 湖
+    "ǔ": [0x10A0],  # 虎
+    "ù": [0x10C0],  # 固
+    "v": [0x1500],
+    "ü": [0x1500],
+    "ǖ": [0x1560],  # 屈
+    "ǘ": [0x1580],  # 渠
+    "ǚ": [0x15A0],  # 取
+    "ǜ": [0x15C0],  # 去
+    "b": [0x0003],
+    "p": [0x000E],
+    "m": [0x000C],  # 也可为韵母m[m̥]，仅见于呒、呣二字
+    "f": [0x0006],
+    "d": [0x0005],
+    "t": [0x0012],
+    "n": [0x000D],  # 也可为韵母n[n̥]/[ɰ̃]，仅见于唔、嗯二字
+    "l": [0x000B],
+    "g": [0x0007],
+    "h": [0x0008],
+    "j": [0x0009],
+    "k": [0x000A],
+    "q": [0x000F],
+    "x": [0x0014],
+    "r": [0x0010],
+    "z": [0x0016],
+    "c": [0x0004],
+    "s": [0x0011],
+    "y": [0x0015],  # 伪声母y
+    "w": [0x0013],  # 伪声母w
     "1": [0x0060],
     "2": [0x0080],
     "3": [0x00A0],
@@ -826,33 +830,34 @@ TOKENS = {
     "̌": [0x00A0],
     "̀": [0x00C0],
     # 以下按需启用
-    # "?": [0x0001, 0x0100, 0x0020],
-    # ".": [0x0121],  # 通配
-    # "*": [0x0001, 0x0100],  # 声母韵母通配
-    # "0": [0x0020],  # 声调通配
-    # "/": [0x0002],  # 零声母
-    # "&": [0x0004],  # 伪声母R
-    "n̄": [0x2D7C],  # 多字符，不存在
-    "ń": [0x2D9C],
-    "ň": [0x2DBC],
-    "ǹ": [0x2DDC],
-    "n1": [0x2D7C],  # 不存在
-    "n2": [0x2D9C],
-    "n3": [0x2DBC],
-    "n4": [0x2DDC],
-    "m̄": [0x2C7C],  # 多字符，不存在
-    "ḿ": [0x2C9C],  # 只有ḿ有单字符表示
-    "m̌": [0x2CBC],  # 多字符，不存在
-    "m̀": [0x2CDC],  # 多字符
-    "m1": [0x2C7C],  # 不存在
-    "m2": [0x2C9C],
-    "m3": [0x2CBC],  # 不存在
-    "m4": [0x2CDC],
+    # "?": [0x0001, 0x0100, 0x0020], # 通配
+    # ".": [0x0121],
+    # "*": [0x0001, 0x0100], # 声母韵母通配
+    # "0": [0x0020], # 声调通配
+    # "/": [0x0002], # 零声母
+    # "&": [0x0004], # 伪声母R
+    "n̄": [0xC26D],  # 多字符，不存在
+    "ń": [0xC28D],
+    "ň": [0xC2AD],
+    "ǹ": [0xC2CD],
+    "n1": [0xC26D],  # 不存在
+    "n2": [0xC28D],
+    "n3": [0xC2AD],
+    "n4": [0xC2CD],
+    "m̄": [0xA26C],  # 多字符，不存在
+    "ḿ": [0xA28C],  # 只有ḿ有单字符表示
+    "m̌": [0xA2AC],  # 多字符，不存在
+    "m̀": [0xA2CC],  # 多字符
+    "m1": [0xA26C],  # 不存在
+    "m2": [0xA28C],
+    "m3": [0xA2AC],  # 不存在
+    "m4": [0xA2CC],
 }
+
 VALID_CHARS = set(chain.from_iterable(TOKENS.keys()))
 VALID_CHARS_RE_DEFAULT = re.compile(f"[{re.escape("".join(VALID_CHARS))}]*")
 VALID_SYLLABLES = base64.a85decode(
-    b'q>2-6l15_oq>2-6q=>R.a`&4$zzzH&EXE3V!^_H2AQ`H2AQ`84!jfzzzq<K"&Z18e8q>238q>238#Qb,0zzzq>238Z2,(5q>238q>238i(sa^zzzH2AQ`H1DjUH2AWbH2AWb!"],3zzz@64l!@7pq0+U\\VY0j>\\$6$X"DzzzadNb@Ja`pGamf?2RIC1X#S6t9zzz\\Z6,@YbMO,WJ_5gl2(ei+<UXbzzzq7@[M\\FLO<kkPJdq"#O/#Tsrazzzz!<<*"!<<*"!<<*"!<<*"zzzzzzz!WW3#zzzzzzz!WW3#zzz8G(:08G(:08G(:08G(:05S1a3zzz!(=X\'!!L+<5SV$7!!L+<!!IfPzzz8ArmU5k*/$8G(:08G(:0#R!Enzzz!!L+<#Z/>;!*$c7#ZSV?!"aY\\zzz8@6bE!4:,R8G(:0aRmj[!(9W`zzz8G(:089E5Z8CZ#e8G(:0!&T3+zzz#aE.*!:[f)#kYq58<gpj#[kFJzzz&-)h6&-)h6&-)h6&-)h6!!!-&zzz8<hL%!:\\A98G(:08G(:0!&QtAzzz!!L+<!!\'h8!!L(;!!L+<zzzz5ZGQ"!*$c7!-H$W!-H$W!!IfPzzzz!!!!%!!!!%!!!!%zzzz$(ueKM4ahK$(q7u$(q7u$*\\p[zzzE#TPp0N&YdE*F([GZtpc!!*-%zzzn[fbCZ18e7nbX@0EVgdZ!>$(Jzzz+92ZK+92ZK+92ZK,QJ)O+92ZKzzzpmXAJq"m5Wq"m5Wq"m5WW08t:zzz+:BS!!!=DF+:0Ft+:BRt!!",Azzz+9<kl+9DNC+:0Ft+:BS!!!48CzzzE!nc10N\'Y-?s>MkE)Sq&zzzz+:BS!+:94k+:BS!+:BS!!!<3$zzzE!nK)+:::5E!ni3E!ni3&-=6\\zzzE#LP80N\'Y,E#UtC:g6*c!!j\\Izzz!!",Az!!",A!!",AzzzzE"b>9:fAD;:fB1OE*GL.5SF8&zzz!!L+<!*$c7!*$c7!*$c7!!L+<zzz!!L+<!!\'h8!!L+<!!L+<!!!$"zzz!!L+<!!L+<!#33K!*$c7zzzz!!L+<!!\'h8!!IiQ!!L(;!!%NLzzz!!!!%!!!!%z!!!!%zzzzz!!!!%!!!!%!!!!%zzzz!<<*"!<<*"!<<*"!<'
+    b'J"I;QHQEb!J"I;QJ"@5P)iaq!zzzDikV37ih[2Dk@UADk@UA8dGFtzzzJ"7/O<F-7;J):h<J):h<6@]UIzzzJ):h<<F5b,J):h<J):h<(eOc.zzzDk@UA:L4V5Dr2-,Dr2-,!!3-#zzzBnlZgBh8j9@6jknA]kYc.1[!jzzz>8%#;&KVJ`4!"A%(ENPV!Wi?%zzzGEi^>FAr5?F3tO!HX@<a!!Ei5zzzJ(G84<aGe,3Zen5IbkY:!X&N(zzzz!<<*"!<<*"!<<*"!<<*"zzzMEVILMEVILMEVILMEVIL#U0ZWzzzCr6hb7*5N1Cs*CjDT`Ul+@$J<zzzI?tNG<F,\\+IGYV:D;Pp*!<N9%zzzIZkEFIbte=Ibte=Ibte=E`)u>zzzCk<<#Cs!=iCl/l+Cs*IlBS$cqzzzJ057#J057#J057#J057#zzzzzzzzzzzz!u)"@\',1EH!u(_8!u(_8!u;.BzzzJ057#J1:s-J1:s-J1:s-J057#zzzMD>V@!\'UhlMEVILMEVILJ0kC!zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzJ1(g+J057#La!6-J057#J,fiTzzzzzzzzzzzMDu%F#X/[tMEVILMEVILJfk0rzzzJ057#!\\+TYJ1:s-Jgq0/!!3E+zzzMDbnDJ2Ri:MEVILRQ_/\\J-Z;YzzzMEVILMCo><ME21HMEVILJ-H8Zzzz!<<*"!<<*"!<<*"!<<*"zzzzJhd`7!\'UekJj\'SCMD>S?!XoJ;zzzzzzzzzzzzzzzzzzz"Fq$`"Fq$`"Fq$`"Fq$`!.YU\\zzzJ057#!$D[MJ,fuXJ057#zzzzLaif5J1:s-J1_61J1_61J,fiTzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz?i^</?pFbn+9;ND?i^</!!!\'#zzz+92HC5QCca+9;ND?i^</5QCiczzzCk36"6qRO]BZh%hCs!Ckzzzz?i^</5QLod?i^</?i^</?iU0,zzzzzzzzzzzzzzzzzzzCk36"5f"*6Cr$bbCr$bb6i[i"zzz9S3uY6qS*mCr6ndCs*Il!!*-$zzz!!!\'#z!!!\'#!!!\'#zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzJ057#!$D[MJ057#J057#!$D7AzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzJ057#!$D[MJ05*tJ,fuX!!!9)zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"Fq$`"Fq$`"Fq$`"Fq$`!.YU\\zzz"Fq$`"98u5"Fq$`"Fq$`zzzz"Fq$`"Fq$`"Fq$`"Fq$`zzzz"Fq$`"98E%"Fq$`"Fq$`"Fq$`zzz"Fq$`"Fq$`"Fq$`"Fq$`!!!Q1zzz"Fq$`"Fq$`"Fq$`"Fq$`!!!Q1zzzz!.Y%Lz!!!Q1zzzz"Fq$`"Fq$`"Fq$`"Fq$`"98E%zzz"Fq$`"FpIP"Fq$`"Fq$`!.Y%Lzzzzzzzzzzzzzzzzzzz"98u5"98E%"98u5"98u5zzzz"Fq$`"Fq$`"Fq$`"Fq$`!.Y%Lzzz"Fq$`"Fq$`"Fq$`"Fq$`"98E%zzz"Fq$`!.YU\\z"Fq$`!!!Q1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz!!iQ)!!iQ)!!iQ)zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz!!E9%!!E9%z!!E9%zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz5QCcazzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz!!iQ)!!iQ)!!iQ)zzzz"Fq$`z"Fq$`"FpIPzzzz"Fq$`"98E%"Fq$`"Fq$`zzzz"Fq$`"98u5"98u5"Fq$`zzzz"Fq$`"98E%"Fq$`"Fq$`zzzzzzzzzzzzzzzzzzzz"98u5"FpIP"Fq$`"Fq$`!.Y%Lzzz"98u5"98E%"Fq$`!.YU\\zzzzzzzzzzzzzzzzzzzz"Fq$`"Fq$`"Fq$`"MbQK"Fq$`zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz5Q'
 )
 # 请自行忽略这个雷霆大位图，0人知道为什么我要把位图直接就内联到代码里
 CHRMAP = str.maketrans("ˉˊˇˋ", "̄́̌̀")
@@ -862,7 +867,7 @@ CHRMAP = str.maketrans("ˉˊˇˋ", "̄́̌̀")
 def _check_syllable_valid(i: int) -> bool:
     def _check_full(val: int) -> bool:
         off = val - 866
-        return (0 <= off < 11105) and bool(VALID_SYLLABLES[(off >> 3)] & (1 << (off & 7)))
+        return (0 <= off < 57223) and bool(VALID_SYLLABLES[(off >> 3)] & (1 << (off & 7)))
 
     initial = i & 0x001F
     final = i & 0x3F00
