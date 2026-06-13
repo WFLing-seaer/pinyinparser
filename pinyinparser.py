@@ -881,8 +881,8 @@ def _check_syllable_valid(i: int) -> bool:
         off = val - 866
         return (0 <= off < 57223) and bool(VALID_SYLLABLES[(off >> 3)] & (1 << (off & 7)))
 
-    initial = i & 0x001F
-    final = i & 0x3F00
+    initial = i & 0x801F
+    final = i & 0x7F00
     tone = i & 0x00E0
 
     i_empty = initial in (Initial.unspec, Initial.missing)
