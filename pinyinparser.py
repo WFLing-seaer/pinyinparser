@@ -1,3 +1,5 @@
+from __future__ import annotations  # 兼容一下3.14-
+
 import base64  # 解压那坨位图用的（嗯确实是解压因为a85编码比直接写hex还短这何尝不是一种压缩
 import re  # 过滤用的
 from collections.abc import Iterable
@@ -36,7 +38,7 @@ class Initial(IntEnum):
     y = 0x0015
     z = 0x0016
 
-    ch = 0x8004  # 变体选择位的意义在于，可以通过屏蔽变体选择位来实现“首字母”或者“通配”之类的概念，比如ch屏蔽了0x0400就变成c，下同
+    ch = 0x8004  # 变体选择位的意义在于，可以通过屏蔽变体选择位来实现“首字母”或者“通配”之类的概念，比如ch屏蔽了0x8000就变成c，下同
     sh = 0x8011
     zh = 0x8016
     H = 0x8008  # Hhm Hhng
@@ -258,10 +260,10 @@ class Syllable(metaclass=_SyllMeta):
         match self.initial:
             case Initial.missing | Initial.unspec | Initial.nul:
                 initial_str = ""
-            case Initial.R:
-                initial_str = "r"
             case Initial.H:
                 initial_str = "h"
+            case Initial.M | Initial.N:
+                initial_str = ""
             case _:
                 initial_str = self.initial.name
 
