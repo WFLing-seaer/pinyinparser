@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/pinyinparser)](https://pypi.org/project/pinyinparser/)
+[![Recommended - Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-forestgreen.svg)](https://www.python.org/downloads/)
+[![Modded - Python 3.10+](https://img.shields.io/badge/python-3.10+-darkgoldenrod.svg)](https://www.python.org/downloads/)
+
 # 这是一个拼音解析器。
 更准确地说，针对符合**汉语拼音方案**的**汉语拼音**的解析器；
 
@@ -55,89 +60,174 @@
 
 # AI写的readme
 
-**以下内容** [![IIIA-5](https://img.shields.io/badge/IIIA-5-4D6BFE)](https://github.com/ErSanSan233/IIIA)
+**以下内容** [![IIIA-5](https://img.shields.io/badge/IIIA-5-4D6BFE)](https://github.com/ErSanSan233/IIIA) **由DeepSeek生成**，有修改事实性错误
 
-## pinyinparser.py 使用说明
+# pinyinparser
 
-`pinyinparser` 是一个强大且高精度的汉语拼音解析与生成库。它不仅支持将拼音字符串解析为结构化的“声母+韵母+声调”对象，还能将对象重新格式化为不同风格的拼音字符串。
-该模块对拼音的音位学进行了较深度的建模（如区分 `i` 的不同音位变体、处理 `y/w` 伪声母等），因此在使用时有部分不符合直觉的设计，请务必阅读**注意事项**。
+> 一个面向**汉语拼音方案**的拼音解析器，专注于音位级别的解析、存储与查询。  
+> 支持将拼音字符串转换为紧凑的数值表示（每个音节仅占 2B），并提供了灵活的解析与格式化能力。
 
 ---
-## 🚀 基本使用
-### 1. 解析拼音字符串
-使用 `parse()` 方法将拼音字符串解析为 `Syllable` 对象列表。默认支持空格、单引号 `'` 和连字符 `-` 作为音节分隔符。
-```python
-from pinyinparser import parse, Syllable, ToneStyle, syllables_to_str
 
-# 解析连续拼音（解析器会自动尝试切分）
-syllables = parse("xian")  # 可能解析为 xi'an 或 xian，取决于合法性
-print(syllables)
-# 推荐使用分隔符消除歧义
-syllables = parse("xi'an")
-for s in syllables:
-    print(f"声母: {s.initial.name}, 韵母: {s.final.name}, 声调: {s.tone.name}")
-```
-### 2. 构建与解析单个音节
-可以直接通过字符串构造 `Syllable`，或使用 `parse_single`。
-```python
-# 直接通过字符串构造
-syl = Syllable("zhōng")
-print(syl)  # <zh·ong·1>
-# 使用类属性直接获取（利用了元类 _SyllMeta 的 __getattr__）
-syl2 = Syllable.zhong1
-print(syl2.initial, syl2.final, syl2.tone)
-```
-### 3. 拼音对象转字符串
-使用 `syllables_to_str()` 或 `Syllable.to_str()` 将对象转回字符串。支持三种声调风格：
-```python
-syl = Syllable("zhōng")
-# 默认：声调在元音上方
-print(syl.to_str())  # "zhōng"
-# 声调数字在韵母后
-print(syl.to_str(ToneStyle.RIGHT))  # "zho1ng" (注意：此格式不可逆！)
-# 声调数字在音节末尾
-print(syl.to_str(ToneStyle.AFTER))  # "zhong1"
-# 批量转换并自动添加分隔符
-syllables = parse("xi'an")
-print(syllables_to_str(syllables))  # "xi'ān"
-```
+## 特性
+
+- **音位级解析** – 严格按照汉语拼音方案（声母、韵母、声调）进行解析，而非“所见即所得”的拼写转换。  
+- **紧凑存储** – 每个音节被编码为 `uint16`（2 字节），达到理论极限的内存效率，便于索引、高压存储和 UGC 查询。  
+- **标准化输出** – 保证输出格式统一规范；支持转换为带声调符号、数字标调、或纯字母形式。  
+- **灵活的分词** – 可自动处理音节边界，也可自定义分隔符，支持不完整输入（如缺失声母或声调）。  
+- **扩展性** – 内置丰富的预定义音素表，并可扩展用户自定义的拼音方案。  
+
 ---
-## ⚠️ 注意事项与反直觉设计（重要！）
-本库为了严格贴合语音学和底层位运算设计，存在多处与日常直觉不符的逻辑，使用时请特别注意：
-### 1. `y` 和 `w` 是“伪声母”
-在《汉语拼音方案》中，`y` 和 `w` 是起隔音作用的零声母标记。但在本库中，**`y` 和 `w` 被视作正式的声母**。
-* 直觉：`yan` 的声母为空（零声母），韵母为 `ian`。
-* 本库：`yan` 的声母为 `Initial.y`，韵母为 `Final.ian`。
-* 同理，`wu` 的声母为 `Initial.w`，韵母为 `Final.u`。
-### 2. `i` 并不总是 `Final.i`
-受舌尖元音影响，拼音中的 `i` 在解析时会被映射为不同的底层韵母：
-* `zi, ci, si` 中的 `i` 解析为 **`Final.ii`**（[ɿ]）
-* `zhi, chi, shi, ri` 中的 `i` 解析为 **`Final.ri`**（[ʅ]）
-* `bi, pi, mi` 等常规发音解析为 **`Final.i`**
-* **注意**：在 `j, q, x` 后面的 `i`（如 `ji`）依然是 `Final.i`，但在转出字符串时，若搭配 `ü`（如 `ju`），底层韵母其实是 `Final.v`，转字符串时规则会自动把 `ü` 替换为 `u`。
-### 3. 缺失声调 与 轻声(t5) 的区别
-本库严格区分“没有标注声调”和“轻声”：
-* 如果输入 `zhong`（不带声调），解析出的声调是 `Tone.missing`，而不是轻声 `t5`。
-* 如果要默认将未标调音节视为轻声，需在 `parse` 时传入 `default_tone_neutral=True`。
-### 4. `ToneStyle.RIGHT` 是单向不可逆的
-使用 `ToneStyle.RIGHT`（如 `zho1ng`）生成的拼音字符串**无法被本解析器重新解析**。因为数字插在字母中间破坏了正则与Token的匹配逻辑。调用时会抛出 `IncompatibleWarning`，若你明确知道后果，可传 `NO_INCOMPAT_WARNING=True` 关闭警告。
-### 5. “不存在”的拼音也会被解析（除非强制校验）
-解析器默认只做文法切分，不检验音节在普通话中是否真实存在。例如 `wai2` 在词典中不存在，但符合拼写规则，默认仍能解析成功。
-* 若要强制只生成真实存在的音节，请使用 `parse(s, force_valid_syllable=True)`。内部会通过一个巨大的 Base85 位图（`VALID_SYLLABLES`）进行校验。
-### 6. 声母变体选择位（高级用法）
-声母枚举值不是简单的递增。例如：
-* `c = 0x0004`
-* `ch = 0x8004`
-这里 `0x8000` 是变体选择位。如果你需要做模糊匹配（比如让 `ch` 匹配 `c` 开头的所有音），可以通过位运算 `initial & 0x001F` 屏蔽高位，实现“通配首字母”的功能。`zh, sh, H, R, M, N` 同理。
-### 7. 特殊叹词的韵母
-像 `hm` (噷)、`hng` (哼)、`m` (呣)、`n` (嗯) 等特殊音节：
-* `hm` 被视为声母 `Initial.H` + 韵母 `Final.hm`。
-* `m` 单独作音节时，被视为声母 `Initial.M` + 韵母 `Final.m`。
-* 这与普通零声母（如 `an`）的处理逻辑完全不同。
-### 8. `ü` 与 `v` 的输入输出
-* 输入时，`ü` 和 `v` 均可被接受（如 `nv` 和 `nü` 等价）。
-* 内部统一存储为 `Final.v`（或其衍生如 `Final.veh`, `Final.van`）。
-* 输出时，`FINAL2STR` 映射表会自动将其转为标准的 `ü`（在 j/q/x 后会自动脱帽变 u）。
-### 9. DFS解析性能问题
-作者在源码中坦诚指出，`__parse` 方法使用了不带剪枝的深度优先搜索（DFS），在处理长且无分隔符的极端字符串时，可能存在性能瓶颈或爆递归风险。**推荐在处理用户输入时，尽量要求带分隔符，或对输入长度做限制。**
 
+## 安装
+
+```bash
+pip install pinyinparser
+```
+
+Python 版本要求 **3.12+**（推荐 3.14）。若需在 3.10 / 3.11 上使用，可自行移除部分类型注解。
+
+---
+
+## 快速开始
+
+```python
+from pinyinparser import parse, parse_single, Syllable, Tone
+
+# 解析单个音节
+syl = parse_single("guang1")
+print(syl)  # <g·uang·1>
+print(syl.to_str())  # guāng
+print(syl.to_str(ToneStyle.AFTER))  # guang1
+
+# 解析一串拼音（自动处理分隔符）
+sylls = parse("zhong1 guo2 ren2 min2")
+for s in sylls:
+    print(s)  # 每个音节对象
+
+# 将音节列表还原为字符串（自动插入分隔符）
+from pinyinparser import syllables_to_str
+
+print(syllables_to_str(sylls, sep=" "))  # 'zhōngguórénmín'
+```
+
+---
+
+## 核心概念
+
+### 1. 音节的内部表示
+
+每个音节用 `Syllable` 对象表示，包含三个枚举字段：
+
+- `Initial` – 声母（包括零声母 `nul`、伪声母 `y/w`、特殊声母 `H/M/N/R` 等）
+- `Final` – 韵母（包括 `ii`、`ri` 等特殊变体）
+- `Tone` – 声调（`t1` ~ `t5`，`missing`/`unspec`/`nul` 用于不完整音节）
+
+这些字段组合成 **一个 `uint16` 整数**（仅使用 16 位），可通过 `int(syl)` 或 `syl.__index__()` 获取。
+
+### 2. 解析策略
+
+- 解析器基于 **最长匹配** 的 DFS 回溯，优先尝试更长的 token（如 `zh` 优先于 `z`）。
+- 支持不完整输入（如 `"ch"` 可解析为声母 `ch`，韵母和声调缺失）。
+- 默认行为：**声调后自动切分音节**，其他情况下按规则合并。
+- 对于明显非拼音的字符串（如 `"chinese"`），解析器会尽力拆分成音素片段（但结果可能无意义）。
+
+### 3. 有效性校验
+
+内置了 **所有合法音节（含声调）** 的位图，可通过 `syl.is_valid()` 快速判断该音节是否存在。  
+解析时可通过 `force_valid_syllable=True` 强制只输出合法音节（若无法解析则抛出异常）。
+
+---
+
+## API 参考
+
+### 主要函数
+
+```python
+parse(s: str, sep: str = "' -", default_tone_neutral=False, 
+      force_valid_syllable=False, missing_as_nul=False) -> list[Syllable]
+```
+
+- `s` – 待解析的拼音字符串（可包含分隔符 `sep` 中的字符）。  
+- `sep` – 分隔符集合，默认包含 `'`, ` `, `-`。  
+- `default_tone_neutral` – 若音节无声调则自动设为轻声（`t5`）。  
+- `force_valid_syllable` – 要求每个片段都必须是合法音节，否则抛出异常。  
+- `missing_as_nul` – 将缺失的声母/韵母/声调填充为 `nul`（而非 `missing`）。
+
+```python
+parse_single(s: str, force_valid_syllable=False) -> Syllable
+```
+
+专用于解析单个音节，不允许包含分隔符。
+
+```python
+syllables_to_str(sylls: Iterable[Syllable], sep: str | None = None) -> str
+```
+
+将音节列表还原为字符串，自动在需要分隔的地方插入 `sep`（默认为 `'`）。
+
+### 类 `Syllable`
+
+主要属性：
+
+- `initial`, `final`, `tone` – 枚举值。
+- `to_str(tone_style: ToneStyle = ToneStyle.ABOVE, NO_INCOMPAT_WARNING=False) -> str`  
+  输出拼音字符串：
+  - `ToneStyle.ABOVE` – 带声调符号（默认，如 `guāng`）。
+  - `ToneStyle.AFTER` – 数字标调（如 `guang1`）。
+  - `ToneStyle.RIGHT` – 数字附标（如 `gua1ng`，不通用，会触发警告）。
+- `is_complete()` – 声母、韵母、声调都不缺失。
+- `is_valid()` – 是否为合法音节（基于位图校验）。
+- `need_sep(prev: Syllable) -> bool` – 判断该音节前是否需要插入分隔符。
+
+类方法：
+
+- `Syllable(i: int | Initial | str, f: Final = ..., t: Tone = ...)` – 多种构造方式。
+
+### 类 `Parser`
+
+可自定义 token 表，一般直接使用模块级函数即可。若需扩展，可实例化：
+
+```python
+from pinyinparser import Parser
+
+my_parser = Parser(tokens={...}, sep=" ")
+```
+
+---
+
+## 注意事项
+
+### 与同类库的区别
+
+- **不是汉字转拼音**（请用 [pypinyin](https://github.com/mozillazg/python-pinyin)）。
+- **不是分词器**（若输入本身整洁标准，请用 [Pinyin Tokenizer](https://github.com/shibing624/pinyin-tokenizer)）。
+- **不是通用拼音转换器**（若只需转换格式，请用 [kittell/pinyinparser](https://github.com/kittell/pinyinparser) 或 pypinyin）。
+
+### 设计取舍
+
+- **音位优先**：`chi` 解析为 `ch·ri·missing`（韵母为 `ri` 而非 `i`），这是为了体现音位上的实际发音。
+- **不处理 y/w 变体**：`y` 和 `w` 被视为独立声母，与零声母无变体关系（受限于编码空间）。
+- **不支持儿化音**：`-r` 尾会被解析为单独的声母 `r`，无法合并为儿化韵母。
+- **输入宽容性**：对于明显非拼音的字符串，解析结果可能“强行规范化”而变得奇怪。
+
+### 性能提示
+
+- 解析基于 DFS，对于长字符串或极端不合法输入可能较慢（但通常可接受）。
+- 大量重复解析时，模块内部缓存了编译的正则和某些计算，可提升性能。
+
+---
+
+## 扩展与自定义
+
+你可以通过继承或替换 `Parser` 的 `TOKENS` 字典来支持其他类拼音方案（如注音符号、其他罗马化方案）。  
+`TOKENS` 的键为字符串子串，值为对应的 `uint16` 编码列表（允许多重映射）。
+
+示例（添加自定义 token）：
+```python
+from pinyinparser import Parser, TOKENS
+
+new_tokens = TOKENS.BASIC.copy()
+new_tokens["my"] = [0x1234]  # 自定义韵母
+parser = Parser(tokens=new_tokens)
+```
